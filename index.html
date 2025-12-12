@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VividP - The AI-Native Internal Developer Platform for Elite Engineering Teams</title>
+    <meta name="description" content="Zero-trust authentication, AI-powered predictive analytics, WebGPU-accelerated rendering, eBPF-based security observability, and natural language queries for elite engineering teams.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Core Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/typed.js/2.0.12/typed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Splitting CSS for text animations -->
+    <link rel="stylesheet" href="https://unpkg.com/splitting@1.0.6/dist/splitting.css">
+    <script src="https://unpkg.com/splitting@1.0.6/dist/splitting.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        :root {
+            --color-deep-space: #0A0E1A;
+            --color-nebula-blue: #1E3A8A;
+            --color-circuit-teal: #0891B2;
+            --color-electric-cyan: #06B6D4;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+            --radius-card: 12px;
+            --radius-button: 8px;
+            --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--color-deep-space);
+            color: #F8FAFC;
+            overflow-x: hidden;
+        }
+        
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Background Effects */
+        .circuit-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background: radial-gradient(ellipse at center, var(--color-deep-space) 0%, #000000 100%);
+        }
+        
+        .particles-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        /* Glow Effects */
+        .glow {
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+        }
+        
+        .glow-hover:hover {
+            box-shadow: 0 0 30px rgba(6, 182, 212, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        /* Gradient Text */
+        .gradient-text {
+            background: linear-gradient(135deg, var(--color-nebula-blue), var(--color-electric-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(6, 182, 212, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(6, 182, 212, 0.6); }
+        }
+        
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        .animate-pulse-glow {
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+        
+        /* Navigation */
+        .nav-blur {
+            background: rgba(10, 14, 26, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        /* Hero Section */
+        .hero-gradient {
+            background: linear-gradient(135deg, 
+                var(--color-deep-space) 0%, 
+                var(--color-nebula-blue) 50%, 
+                var(--color-circuit-teal) 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero-gradient::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="circuit" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M10,5 L15,5 M5,10 L10,10 M10,10 L10,15" stroke="%2306B6D4" stroke-width="0.5" fill="none" opacity="0.1"/></pattern></defs><rect width="100" height="100" fill="url(%23circuit)"/></svg>') repeat;
+            opacity: 0.3;
+            animation: circuit-flow 20s linear infinite;
+        }
+        
+        @keyframes circuit-flow {
+            0% { transform: translateX(0) translateY(0); }
+            100% { transform: translateX(20px) translateY(20px); }
+        }
+        
+        /* Feature Cards */
+        .feature-card {
+            transition: all 0.3s ease;
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(6, 182, 212, 0.3);
+            border-color: var(--color-electric-cyan);
+        }
+        
+        /* Customer Logos */
+        .logo-carousel {
+            animation: scroll 30s linear infinite;
+        }
+        
+        @keyframes scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        
+        /* Pricing Cards */
+        .pricing-card {
+            transition: all 0.3s ease;
+            background: rgba(30, 58, 138, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        .pricing-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 30px rgba(6, 182, 212, 0.2);
+        }
+        
+        .pricing-card.featured {
+            background: rgba(6, 182, 212, 0.1);
+            border-color: var(--color-electric-cyan);
+            position: relative;
+        }
+        
+        .pricing-card.featured::before {
+            content: 'Most Popular';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--color-electric-cyan);
+            color: white;
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .hero-gradient {
+                padding: 2rem 1rem;
+            }
+            
+            .feature-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            .pricing-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+        }
+        
+        /* Scroll Animations */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+        
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        /* Button Styles */
+        .btn-primary {
+            background: linear-gradient(135deg, var(--color-nebula-blue), var(--color-circuit-teal));
+            color: white;
+            padding: 12px 24px;
+            border-radius: var(--radius-button);
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: none;
+            cursor: pointer;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(6, 182, 212, 0.4);
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: var(--color-electric-cyan);
+            padding: 12px 24px;
+            border-radius: var(--radius-button);
+            font-weight: 600;
+            transition: all 0.3s ease;
+            border: 1px solid var(--color-electric-cyan);
+            cursor: pointer;
+        }
+        
+        .btn-secondary:hover {
+            background: var(--color-electric-cyan);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        /* FAQ Styles */
+        .faq-item {
+            border-bottom: 1px solid rgba(8, 145, 178, 0.2);
+            padding: 1.5rem 0;
+        }
+        
+        .faq-question {
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            color: var(--color-electric-cyan);
+        }
+        
+        .faq-answer {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+            color: #94A3B8;
+            margin-top: 1rem;
+        }
+        
+        .faq-item.active .faq-answer {
+            max-height: 200px;
+        }
+        
+        .faq-item.active .faq-toggle {
+            transform: rotate(45deg);
+        }
+        
+        .faq-toggle {
+            transition: transform 0.3s ease;
+            color: var(--color-electric-cyan);
+        }
+    </style>
+</head>
+<body>
+    <!-- Background Effects -->
+    <div class="circuit-bg"></div>
+    <div class="particles-container" id="particles"></div>
+    
+    <!-- Navigation -->
+    <nav class="nav-blur fixed top-0 left-0 right-0 z-50 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <img src="resources/icons/logo.png" alt="VividP" class="w-8 h-8">
+                <span class="text-xl font-bold gradient-text">VividP</span>
+            </div>
+            
+            <div class="hidden md:flex items-center space-x-8">
+                <a href="#features" class="text-gray-300 hover:text-cyan-400 transition-colors">Features</a>
+                <a href="#pricing" class="text-gray-300 hover:text-cyan-400 transition-colors">Pricing</a>
+                <a href="#faq" class="text-gray-300 hover:text-cyan-400 transition-colors">FAQ</a>
+                <a href="login.html" class="text-gray-300 hover:text-cyan-400 transition-colors">Login</a>
+                <a href="signup.html" class="btn-primary">Get Started</a>
+            </div>
+            
+            <button class="md:hidden text-gray-300 hover:text-cyan-400" id="mobile-menu-btn">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+            </button>
+        </div>
+    </nav>
+    
+    <!-- Hero Section -->
+    <section class="hero-gradient min-h-screen flex items-center justify-center pt-20">
+        <div class="max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 items-center">
+            <div class="space-y-8">
+                <div class="space-y-4">
+                    <div class="inline-flex items-center px-4 py-2 rounded-full glass text-sm font-medium">
+                        <span class="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
+                        AI-Native Platform • Now Available
+                    </div>
+                    
+                    <h1 class="text-5xl lg:text-6xl font-bold leading-tight">
+                        The <span class="gradient-text">AI-Native</span> Internal Developer Platform for
+                        <span class="gradient-text" id="typed-text"></span>
+                    </h1>
+                    
+                    <p class="text-xl text-gray-300 leading-relaxed max-w-2xl">
+                        Zero-trust authentication, AI-powered predictive analytics, WebGPU-accelerated rendering, 
+                        eBPF-based security observability, and "ask-to-visualize" natural language queries for 
+                        elite engineering teams.
+                    </p>
+                </div>
+                
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <a href="signup.html" class="btn-primary text-center">
+                        Request Access
+                    </a>
+                    <button class="btn-secondary" onclick="openDemo()">
+                        Watch Demo
+                    </button>
+                    <button class="btn-secondary" onclick="bookCall()">
+                        Book a Call
+                    </button>
+                </div>
+                
+                <div class="flex items-center space-x-6 text-sm text-gray-400">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                        <span>Live Demo Available</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <svg class="w-4 h-4 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        <span>Enterprise Ready</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="relative">
+                <div class="animate-float">
+                    <img src="resources/hero-circuit.png" alt="VividP Platform" class="w-full h-auto rounded-lg glow">
+                </div>
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-400/10 to-transparent rounded-lg"></div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Customer Logos -->
+    <section class="py-16 border-y border-gray-800">
+        <div class="max-w-7xl mx-auto px-6">
+            <p class="text-center text-gray-400 mb-8">Trusted by elite engineering teams at</p>
+            <div class="overflow-hidden">
+                <div class="logo-carousel flex items-center space-x-16 opacity-60">
+                    <img src="https://kimi-web-img.moonshot.cn/img/upload.wikimedia.org/d36c10344704ffa5b62bbe079e8e19c350a71d16.png" alt="Google" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/icon2.cleanpng.com/f77343ee36cac0826c3943009a5286228f5f04fd.webp" alt="Uber" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/toppng.com/6f9677f8cd8e15419b1a543c9b57b4dfe226a6b1.png" alt="Netflix" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/logos-world.net/03843dbc9ed7b7f577521f19432a4f2736792eef.png" alt="Spotify" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/upload.wikimedia.org/d36c10344704ffa5b62bbe079e8e19c350a71d16.png" alt="Meta" class="h-8 w-auto filter brightness-0 invert">
+                    <!-- Duplicate for seamless loop -->
+                    <img src="https://kimi-web-img.moonshot.cn/img/upload.wikimedia.org/d36c10344704ffa5b62bbe079e8e19c350a71d16.png" alt="Google" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/icon2.cleanpng.com/f77343ee36cac0826c3943009a5286228f5f04fd.webp" alt="Uber" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/toppng.com/6f9677f8cd8e15419b1a543c9b57b4dfe226a6b1.png" alt="Netflix" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/logos-world.net/03843dbc9ed7b7f577521f19432a4f2736792eef.png" alt="Spotify" class="h-8 w-auto filter brightness-0 invert">
+                    <img src="https://kimi-web-img.moonshot.cn/img/upload.wikimedia.org/d36c10344704ffa5b62bbe079e8e19c350a71d16.png" alt="Meta" class="h-8 w-auto filter brightness-0 invert">
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Features Section -->
+    <section id="features" class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16 fade-in">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                    Built for <span class="gradient-text">Elite Teams</span>
+                </h2>
+                <p class="text-xl text-gray-300 max-w-3xl mx-auto">
+                    VividP combines cutting-edge AI, security, and visualization technologies 
+                    to deliver unprecedented developer productivity and platform reliability.
+                </p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Zero-Trust Auth -->
+                <div class="feature-card p-8 rounded-lg fade-in">
+                    <div class="w-16 h-16 mb-6 rounded-lg glass flex items-center justify-center">
+                        <svg class="w-8 h-8 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4 text-cyan-400">Zero-Trust Authentication</h3>
+                    <p class="text-gray-300 mb-6">
+                        Enterprise-grade security with continuous verification, multi-factor authentication, 
+                        and granular access controls across all services.
+                    </p>
+                    <ul class="text-sm text-gray-400 space-y-2">
+                        <li>• Continuous identity verification</li>
+                        <li>• Multi-factor authentication</li>
+                        <li>• Granular RBAC policies</li>
+                    </ul>
+                </div>
+                
+                <!-- Predictive Analytics -->
+                <div class="feature-card p-8 rounded-lg fade-in">
+                    <div class="w-16 h-16 mb-6 rounded-lg glass flex items-center justify-center">
+                        <img src="resources/icons/ai-chip.png" alt="AI" class="w-8 h-8">
+                    </div>
+                    <h3 class="text-xl font-bold mb-4 text-cyan-400">Predictive Analytics</h3>
+                    <p class="text-gray-300 mb-6">
+                        Vertex AI-powered insights that predict infrastructure needs, detect anomalies, 
+                        and optimize resource allocation before issues occur.
+                    </p>
+                    <ul class="text-sm text-gray-400 space-y-2">
+                        <li>• Infrastructure forecasting</li>
+                        <li>• Anomaly detection</li>
+                        <li>• Resource optimization</li>
+                    </ul>
+                </div>
+                
+                <!-- WebGPU Rendering -->
+                <div class="feature-card p-8 rounded-lg fade-in">
+                    <div class="w-16 h-16 mb-6 rounded-lg glass flex items-center justify-center">
+                        <svg class="w-8 h-8 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4 text-cyan-400">WebGPU Acceleration</h3>
+                    <p class="text-gray-300 mb-6">
+                        Hardware-accelerated rendering for complex visualizations, 3D network topologies, 
+                        and real-time data streams at 60fps performance.
+                    </p>
+                    <ul class="text-sm text-gray-400 space-y-2">
+                        <li>• 60fps performance</li>
+                        <li>• 3D network topology</li>
+                        <li>• Real-time data streams</li>
+                    </ul>
+                </div>
+                
+                <!-- eBPF Security -->
+                <div class="feature-card p-8 rounded-lg fade-in">
+                    <div class="w-16 h-16 mb-6 rounded-lg glass flex items-center justify-center">
+                        <svg class="w-8 h-8 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4 text-cyan-400">eBPF Security Insights</h3>
+                    <p class="text-gray-300 mb-6">
+                        Deep kernel-level observability with eBPF-based monitoring, real-time threat detection, 
+                        and zero-trust policy enforcement.
+                    </p>
+                    <ul class="text-sm text-gray-400 space-y-2">
+                        <li>• Kernel-level monitoring</li>
+                        <li>• Real-time threat detection</li>
+                        <li>• Zero-trust enforcement</li>
+                    </ul>
+                </div>
+                
+                <!-- Self-Service Portal -->
+                <div class="feature-card p-8 rounded-lg fade-in">
+                    <div class="w-16 h-16 mb-6 rounded-lg glass flex items-center justify-center">
+                        <svg class="w-8 h-8 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4 text-cyan-400">Self-Service Portal</h3>
+                    <p class="text-gray-300 mb-6">
+                        Developer-friendly portal for requesting environments, managing resources, 
+                        and accessing approved infrastructure templates with automated provisioning.
+                    </p>
+                    <ul class="text-sm text-gray-400 space-y-2">
+                        <li>• Environment templating</li>
+                        <li>• Automated provisioning</li>
+                        <li>• Resource management</li>
+                    </ul>
+                </div>
+                
+                <!-- Natural Language Queries -->
+                <div class="feature-card p-8 rounded-lg fade-in">
+                    <div class="w-16 h-16 mb-6 rounded-lg glass flex items-center justify-center">
+                        <svg class="w-8 h-8 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-bold mb-4 text-cyan-400">Natural Language Queries</h3>
+                    <p class="text-gray-300 mb-6">
+                        "Ask-to-visualize" interface powered by advanced AI. Query your infrastructure 
+                        using natural language and get instant visualizations and insights.
+                    </p>
+                    <ul class="text-sm text-gray-400 space-y-2">
+                        <li>• Natural language processing</li>
+                        <li>• Instant visualizations</li>
+                        <li>• Multi-language support</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Dashboard Preview -->
+    <section class="py-20 bg-gradient-to-b from-transparent to-gray-900/50">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16 fade-in">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                    Experience the <span class="gradient-text">Future</span>
+                </h2>
+                <p class="text-xl text-gray-300 max-w-3xl mx-auto">
+                    See how VividP transforms complex infrastructure management into intuitive, 
+                    AI-powered experiences that scale with your team.
+                </p>
+            </div>
+            
+            <div class="relative fade-in">
+                <img src="resources/dashboard-preview.png" alt="VividP Dashboard" class="w-full rounded-lg glow animate-pulse-glow">
+                <div class="absolute inset-0 bg-gradient-to-t from-gray-900/80 to-transparent rounded-lg"></div>
+                <div class="absolute bottom-8 left-8 right-8">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold text-white mb-2">Live Dashboard</h3>
+                            <p class="text-gray-300">Real-time insights and AI-powered recommendations</p>
+                        </div>
+                        <button class="btn-primary" onclick="openLiveDemo()">
+                            Try Live Demo
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Pricing Section -->
+    <section id="pricing" class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16 fade-in">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                    Simple, <span class="gradient-text">Transparent</span> Pricing
+                </h2>
+                <p class="text-xl text-gray-300 max-w-3xl mx-auto">
+                    Choose the plan that fits your team's needs. All plans include 
+                    enterprise-grade security and AI-powered insights.
+                </p>
+            </div>
+            
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Free Tier -->
+                <div class="pricing-card p-8 rounded-lg fade-in">
+                    <div class="text-center mb-8">
+                        <h3 class="text-2xl font-bold text-white mb-2">Free</h3>
+                        <p class="text-gray-400 mb-4">Perfect for small teams</p>
+                        <div class="text-4xl font-bold gradient-text mb-2">$0</div>
+                        <p class="text-gray-400">per month</p>
+                    </div>
+                    
+                    <ul class="space-y-4 mb-8">
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Up to 5 team members</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Basic AI insights</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Community support</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Basic security features</span>
+                        </li>
+                    </ul>
+                    
+                    <button class="w-full btn-secondary" onclick="selectPlan('free')">
+                        Get Started Free
+                    </button>
+                </div>
+                
+                <!-- Team Plan -->
+                <div class="pricing-card featured p-8 rounded-lg fade-in">
+                    <div class="text-center mb-8">
+                        <h3 class="text-2xl font-bold text-white mb-2">Team</h3>
+                        <p class="text-gray-400 mb-4">For growing organizations</p>
+                        <div class="text-4xl font-bold gradient-text mb-2">$49</div>
+                        <p class="text-gray-400">per user/month</p>
+                    </div>
+                    
+                    <ul class="space-y-4 mb-8">
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Unlimited team members</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Advanced AI analytics</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Priority support</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Advanced security features</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Custom integrations</span>
+                        </li>
+                    </ul>
+                    
+                    <button class="w-full btn-primary" onclick="selectPlan('team')">
+                        Start Free Trial
+                    </button>
+                </div>
+                
+                <!-- Enterprise Plan -->
+                <div class="pricing-card p-8 rounded-lg fade-in">
+                    <div class="text-center mb-8">
+                        <h3 class="text-2xl font-bold text-white mb-2">Enterprise</h3>
+                        <p class="text-gray-400 mb-4">For large organizations</p>
+                        <div class="text-4xl font-bold gradient-text mb-2">Custom</div>
+                        <p class="text-gray-400">pricing</p>
+                    </div>
+                    
+                    <ul class="space-y-4 mb-8">
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Unlimited everything</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Custom AI models</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>Dedicated support</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>On-premise deployment</span>
+                        </li>
+                        <li class="flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                            </svg>
+                            <span>SLA guarantee</span>
+                        </li>
+                    </ul>
+                    
+                    <button class="w-full btn-secondary" onclick="selectPlan('enterprise')">
+                        Contact Sales
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- FAQ Section -->
+    <section id="faq" class="py-20 bg-gradient-to-b from-transparent to-gray-900/50">
+        <div class="max-w-4xl mx-auto px-6">
+            <div class="text-center mb-16 fade-in">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                    Frequently Asked <span class="gradient-text">Questions</span>
+                </h2>
+                <p class="text-xl text-gray-300">
+                    Everything you need to know about VividP
+                </p>
+            </div>
+            
+            <div class="space-y-0">
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What makes VividP different from other IDP platforms?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        VividP is the first truly AI-native IDP platform, combining zero-trust security, 
+                        WebGPU-accelerated visualization, and natural language queries in one unified experience. 
+                        Our eBPF-based observability provides unprecedented visibility into your infrastructure.
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How does the AI-powered analytics work?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        Our AI engine analyzes your infrastructure patterns, predicts resource needs, 
+                        detects anomalies in real-time, and provides actionable insights to optimize 
+                        performance and reduce costs. It's powered by Google's Vertex AI platform.
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>Can VividP integrate with our existing tools?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        Yes, VividP integrates seamlessly with popular DevOps tools including Kubernetes, 
+                        Docker, Jenkins, GitHub Actions, Prometheus, Grafana, and many more. Our API-first 
+                        architecture makes custom integrations straightforward.
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What security standards does VividP meet?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        VividP is built with security-first principles and meets SOC 2 Type II, ISO 27001, 
+                        and GDPR compliance standards. Our zero-trust architecture ensures continuous 
+                        verification and granular access controls.
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>How does the natural language query feature work?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        Simply type or speak your query in natural language (e.g., "Show me deployment 
+                        latency trends for the last 30 days"), and our AI will generate the appropriate 
+                        visualizations and insights instantly.
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question" onclick="toggleFAQ(this)">
+                        <span>What deployment options are available?</span>
+                        <span class="faq-toggle">+</span>
+                    </div>
+                    <div class="faq-answer">
+                        VividP offers flexible deployment options including our managed SaaS platform, 
+                        self-hosted on your infrastructure, or hybrid deployments. Enterprise customers 
+                        can choose the deployment model that best fits their security requirements.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- CTA Section -->
+    <section class="py-20">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <div class="glass p-12 rounded-lg fade-in">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                    Ready to Transform Your <span class="gradient-text">Developer Experience?</span>
+                </h2>
+                <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+                    Join the elite engineering teams already using VividP to accelerate 
+                    development, enhance security, and scale with confidence.
+                </p>
+                
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <a href="signup.html" class="btn-primary">
+                        Start Free Trial
+                    </a>
+                    <button class="btn-secondary" onclick="bookCall()">
+                        Book a Demo Call
+                    </button>
+                </div>
+                
+                <p class="text-sm text-gray-400 mt-6">
+                    No credit card required • 14-day free trial • Cancel anytime
+                </p>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="py-12 border-t border-gray-800">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <img src="resources/icons/logo.png" alt="VividP" class="w-6 h-6">
+                    <span class="text-lg font-bold gradient-text">VividP</span>
+                </div>
+                
+                <div class="text-gray-400 text-sm">
+                    © 2025 VividP. All rights reserved. Built with passion for developers.
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="main.js"></script>
+</body>
+</html>

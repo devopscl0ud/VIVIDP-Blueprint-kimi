@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Self-Service Portal - VividP</title>
+    <meta name="description" content="Developer self-service portal for environment management and resource provisioning.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Core Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        :root {
+            --color-deep-space: #0A0E1A;
+            --color-nebula-blue: #1E3A8A;
+            --color-circuit-teal: #0891B2;
+            --color-electric-cyan: #06B6D4;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--color-deep-space);
+            color: #F8FAFC;
+            overflow-x: hidden;
+        }
+        
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .circuit-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background: radial-gradient(ellipse at center, var(--color-deep-space) 0%, #000000 100%);
+        }
+        
+        .glass {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 280px;
+            z-index: 40;
+            transition: transform 0.3s ease;
+        }
+        
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+        }
+        
+        .nav-item {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin: 4px 0;
+        }
+        
+        .nav-item:hover {
+            background: rgba(6, 182, 212, 0.1);
+            transform: translateX(4px);
+        }
+        
+        .nav-item.active {
+            background: rgba(6, 182, 212, 0.2);
+            border-left: 3px solid var(--color-electric-cyan);
+        }
+        
+        .portal-card {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .portal-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.2);
+            border-color: var(--color-electric-cyan);
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, var(--color-nebula-blue), var(--color-electric-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+        
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-running { background: var(--color-success); }
+        .status-stopped { background: var(--color-error); }
+        .status-pending { background: var(--color-warning); }
+        .status-deploying { background: var(--color-cyan); }
+        
+        .template-card {
+            background: rgba(30, 58, 138, 0.1);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .template-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.2);
+            border-color: var(--color-electric-cyan);
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.active { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+        }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 58, 138, 0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(8, 145, 178, 0.5);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="circuit-bg"></div>
+    
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    
+    <!-- Sidebar -->
+    <nav class="sidebar glass" id="sidebar">
+        <div class="p-6 border-b border-gray-700">
+            <div class="flex items-center space-x-3">
+                <img src="resources/icons/logo.png" alt="VividP" class="w-8 h-8">
+                <span class="text-xl font-bold gradient-text">VividP</span>
+                <button class="ml-auto lg:hidden text-gray-400 hover:text-white" id="sidebar-toggle">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-4">
+            <div class="space-y-2">
+                <a href="dashboard.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                
+                <a href="analytics.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    <span>Analytics</span>
+                </a>
+                
+                <a href="security.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Security</span>
+                </a>
+                
+                <a href="portal.html" class="nav-item active flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Portal</span>
+                </a>
+                
+                <a href="settings.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+        
+        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                    <span class="text-white font-semibold text-sm">JD</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-white truncate">John Doe</p>
+                    <p class="text-xs text-gray-400 truncate">john@company.com</p>
+                </div>
+                <button class="text-gray-400 hover:text-white" onclick="showUserMenu()">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 8.586l3.293-3.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+        <header class="glass border-b border-gray-700 px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button class="lg:hidden text-gray-400 hover:text-white" id="mobile-menu-btn">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <h1 class="text-2xl font-bold text-white">Self-Service Portal</h1>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <button class="bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm font-medium" onclick="createEnvironment()">
+                        Create Environment
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <div class="p-6">
+            <!-- Quick Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="portal-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Active Environments</p>
+                            <p class="text-2xl font-bold text-white">12</p>
+                            <p class="text-xs text-cyan-400">3 created today</p>
+                        </div>
+                        <div class="w-12 h-12 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="portal-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Total Resources</p>
+                            <p class="text-2xl font-bold text-white">48</p>
+                            <p class="text-xs text-green-400">All healthy</p>
+                        </div>
+                        <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="portal-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Pending Requests</p>
+                            <p class="text-2xl font-bold text-white">3</p>
+                            <p class="text-xs text-yellow-400">Awaiting approval</p>
+                        </div>
+                        <div class="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="portal-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Monthly Cost</p>
+                            <p class="text-2xl font-bold text-white">$2.4K</p>
+                            <p class="text-xs text-cyan-400">-5% from last month</p>
+                        </div>
+                        <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"></path>
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Portal Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Environment Templates -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="portal-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">Environment Templates</h3>
+                            <button class="text-cyan-400 hover:text-cyan-300 text-sm font-medium" onclick="viewAllTemplates()">
+                                View All
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="environment-templates">
+                            <!-- Templates will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Environments -->
+                    <div class="portal-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">Recent Environments</h3>
+                            <button class="text-cyan-400 hover:text-cyan-300 text-sm font-medium" onclick="viewAllEnvironments()">
+                                View All
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4" id="recent-environments">
+                            <!-- Recent environments will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Sidebar -->
+                <div class="space-y-6">
+                    <!-- Quick Actions -->
+                    <div class="portal-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Quick Actions</h3>
+                        <div class="space-y-3">
+                            <button class="w-full bg-cyan-500/20 border border-cyan-500/30 rounded-lg px-4 py-3 text-cyan-400 hover:bg-cyan-500/30 transition-colors" onclick="createEnvironment()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Create Environment</span>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full bg-green-500/20 border border-green-500/30 rounded-lg px-4 py-3 text-green-400 hover:bg-green-500/30 transition-colors" onclick="deployService()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Deploy Service</span>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full bg-yellow-500/20 border border-yellow-500/30 rounded-lg px-4 py-3 text-yellow-400 hover:bg-yellow-500/30 transition-colors" onclick="requestResource()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Request Resource</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Approval Queue -->
+                    <div class="portal-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Approval Queue</h3>
+                        <div class="space-y-4" id="approval-queue">
+                            <!-- Approval items will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Resource Usage -->
+                    <div class="portal-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Resource Usage</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-gray-400">CPU Quota</span>
+                                    <span class="text-cyan-400">68/100 cores</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div class="bg-cyan-400 h-2 rounded-full" style="width: 68%"></div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-gray-400">Memory Quota</span>
+                                    <span class="text-green-400">245/500 GB</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div class="bg-green-400 h-2 rounded-full" style="width: 49%"></div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-gray-400">Storage Quota</span>
+                                    <span class="text-yellow-400">820/1000 GB</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div class="bg-yellow-400 h-2 rounded-full" style="width: 82%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        // Portal Page JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            initPortal();
+            initSidebar();
+            populateTemplates();
+            populateEnvironments();
+            populateApprovalQueue();
+        });
+        
+        function initPortal() {
+            setTimeout(() => {
+                document.querySelectorAll('.fade-in').forEach((card, index) => {
+                    setTimeout(() => {
+                        card.classList.add('visible');
+                    }, index * 100);
+                });
+            }, 100);
+        }
+        
+        function populateTemplates() {
+            const templates = [
+                {
+                    name: 'Development Stack',
+                    description: 'Full-stack development environment with Node.js, PostgreSQL, and Redis',
+                    icon: 'code',
+                    deploymentTime: '5 min',
+                    cost: '$0.50/day'
+                },
+                {
+                    name: 'Microservices Cluster',
+                    description: 'Kubernetes cluster with service mesh and monitoring stack',
+                    icon: 'cubes',
+                    deploymentTime: '8 min',
+                    cost: '$2.30/day'
+                },
+                {
+                    name: 'ML Training Environment',
+                    description: 'GPU-enabled environment for machine learning model training',
+                    icon: 'brain',
+                    deploymentTime: '3 min',
+                    cost: '$8.50/day'
+                },
+                {
+                    name: 'Database Cluster',
+                    description: 'High-availability PostgreSQL cluster with automated backups',
+                    icon: 'database',
+                    deploymentTime: '6 min',
+                    cost: '$1.20/day'
+                }
+            ];
+            
+            const container = document.getElementById('environment-templates');
+            container.innerHTML = templates.map(template => `
+                <div class="template-card p-4" onclick="selectTemplate('${template.name}')">
+                    <div class="flex items-start space-x-3">
+                        <div class="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                            ${getTemplateIcon(template.icon)}
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="text-sm font-semibold text-white">${template.name}</h4>
+                            <p class="text-xs text-gray-400 mt-1">${template.description}</p>
+                            <div class="flex items-center justify-between mt-3">
+                                <span class="text-xs text-cyan-400">⏱️ ${template.deploymentTime}</span>
+                                <span class="text-xs text-green-400">💰 ${template.cost}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function populateEnvironments() {
+            const environments = [
+                {
+                    name: 'api-staging',
+                    status: 'running',
+                    type: 'Kubernetes',
+                    region: 'us-west-2',
+                    created: '2 hours ago',
+                    cost: '$12.50/day'
+                },
+                {
+                    name: 'frontend-dev',
+                    status: 'running',
+                    type: 'Docker',
+                    region: 'us-east-1',
+                    created: '1 day ago',
+                    cost: '$3.20/day'
+                },
+                {
+                    name: 'ml-training-prod',
+                    status: 'deploying',
+                    type: 'GPU Cluster',
+                    region: 'us-central-1',
+                    created: '30 minutes ago',
+                    cost: '$45.00/day'
+                },
+                {
+                    name: 'database-test',
+                    status: 'stopped',
+                    type: 'PostgreSQL',
+                    region: 'eu-west-1',
+                    created: '3 days ago',
+                    cost: '$0.00/day'
+                }
+            ];
+            
+            const container = document.getElementById('recent-environments');
+            container.innerHTML = environments.map(env => `
+                <div class="flex items-center justify-between p-4 bg-gray-800/30 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="status-dot status-${env.status}"></div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-white">${env.name}</h4>
+                            <p class="text-xs text-gray-400">${env.type} • ${env.region}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm text-cyan-400">${env.cost}</p>
+                        <p class="text-xs text-gray-500">${env.created}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function populateApprovalQueue() {
+            const approvals = [
+                {
+                    request: 'Production Database',
+                    requester: 'Sarah Chen',
+                    priority: 'high',
+                    time: '15 min ago'
+                },
+                {
+                    request: 'GPU Cluster',
+                    requester: 'Mike Johnson',
+                    priority: 'medium',
+                    time: '1 hour ago'
+                },
+                {
+                    request: 'Load Balancer',
+                    requester: 'Alex Rivera',
+                    priority: 'low',
+                    time: '2 hours ago'
+                }
+            ];
+            
+            const container = document.getElementById('approval-queue');
+            container.innerHTML = approvals.map(item => `
+                <div class="bg-gray-800/30 p-3 rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-sm font-medium text-white">${item.request}</h4>
+                        <span class="text-xs px-2 py-1 ${getPriorityColor(item.priority)} rounded-full">${item.priority}</span>
+                    </div>
+                    <p class="text-xs text-gray-400">Requested by ${item.requester}</p>
+                    <p class="text-xs text-gray-500 mt-1">${item.time}</p>
+                    <div class="flex space-x-2 mt-3">
+                        <button class="px-3 py-1 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30" onclick="approveRequest('${item.request}')">Approve</button>
+                        <button class="px-3 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30" onclick="rejectRequest('${item.request}')">Reject</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function getTemplateIcon(icon) {
+            const icons = {
+                code: '<svg class="w-6 h-6 text-cyan-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path></svg>',
+                cubes: '<svg class="w-6 h-6 text-cyan-400" fill="currentColor" viewBox="0 0 20 20"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"></path></svg>',
+                brain: '<svg class="w-6 h-6 text-cyan-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M6.625 2.655A9 9 0 0119 11a1 1 0 11-2 0 7 7 0 00-9.625-6.492 1 1 0 11-.75-1.853zM4.662 4.959A1 1 0 014.75 6.37 6.97 6.97 0 003 11a1 1 0 11-2 0 8.97 8.97 0 012.25-5.953 1 1 0 011.412-.088z"></path><path fill-rule="evenodd" d="M5 11a5 5 0 1110 0 1 1 0 11-2 0 3 3 0 10-6 0c0 1.677-.345 3.276-.968 4.729a1 1 0 11-1.838-.789A9.964 9.964 0 005 11z"></path><path d="M8.5 11a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"></path></svg>',
+                database: '<svg class="w-6 h-6 text-cyan-400" fill="currentColor" viewBox="0 0 20 20"><path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"></path><path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z"></path><path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z"></path></svg>'
+            };
+            return icons[icon] || icons.code;
+        }
+        
+        function getPriorityColor(priority) {
+            const colors = {
+                high: 'bg-red-500/20 text-red-400',
+                medium: 'bg-yellow-500/20 text-yellow-400',
+                low: 'bg-green-500/20 text-green-400'
+            };
+            return colors[priority] || 'bg-gray-500/20 text-gray-400';
+        }
+        
+        // Interactive Functions
+        function selectTemplate(templateName) {
+            showNotification(`Selected template: ${templateName}`, 'info');
+            setTimeout(() => {
+                showNotification('Redirecting to template configuration...', 'info');
+            }, 1000);
+        }
+        
+        function createEnvironment() {
+            showNotification('Opening environment creation wizard...', 'info');
+            // In a real app, this would open a modal or redirect to creation flow
+        }
+        
+        function deployService() {
+            showNotification('Opening service deployment interface...', 'info');
+        }
+        
+        function requestResource() {
+            showNotification('Opening resource request form...', 'info');
+        }
+        
+        function approveRequest(request) {
+            showNotification(`Approved request: ${request}`, 'success');
+            // Remove from approval queue
+            setTimeout(() => {
+                populateApprovalQueue();
+            }, 1000);
+        }
+        
+        function rejectRequest(request) {
+            showNotification(`Rejected request: ${request}`, 'warning');
+            // Remove from approval queue
+            setTimeout(() => {
+                populateApprovalQueue();
+            }, 1000);
+        }
+        
+        function viewAllTemplates() {
+            showNotification('Opening full template catalog...', 'info');
+        }
+        
+        function viewAllEnvironments() {
+            showNotification('Opening environment management interface...', 'info');
+        }
+        
+        function showUserMenu() {
+            showNotification('User menu would be displayed here', 'info');
+        }
+        
+        function initSidebar() {
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            const sidebar = document.getElementById('sidebar');
+            
+            function toggleSidebar() {
+                sidebar.classList.toggle('active');
+                sidebarOverlay.classList.toggle('active');
+            }
+            
+            sidebarToggle.addEventListener('click', toggleSidebar);
+            mobileMenuBtn.addEventListener('click', toggleSidebar);
+            sidebarOverlay.addEventListener('click', toggleSidebar);
+            
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 1024) {
+                    sidebar.classList.remove('active');
+                    sidebarOverlay.classList.remove('active');
+                }
+            });
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg glass max-w-sm transform translate-x-full transition-transform duration-300`;
+            
+            const colors = {
+                success: 'border-green-400 text-green-400',
+                error: 'border-red-400 text-red-400',
+                warning: 'border-yellow-400 text-yellow-400',
+                info: 'border-cyan-400 text-cyan-400'
+            };
+            
+            notification.classList.add(colors[type] || colors.info);
+            notification.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <div class="flex-shrink-0">
+                        ${getNotificationIcon(type)}
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium">${message}</p>
+                    </div>
+                    <button class="flex-shrink-0 text-gray-400 hover:text-white" onclick="this.parentElement.parentElement.remove()">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateX(0)';
+            }, 100);
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateX(full)';
+                setTimeout(() => {
+                    if (notification.parentElement) {
+                        notification.remove();
+                    }
+                }, 300);
+            }, 5000);
+        }
+        
+        function getNotificationIcon(type) {
+            const icons = {
+                success: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>',
+                error: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>',
+                warning: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>',
+                info: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[type] || icons.info;
+        }
+        
+        console.log('%c🚀 VividP Portal - Self-Service Infrastructure', 'color: #06B6D4; font-size: 16px; font-weight: bold;');
+        console.log('%cEmpowering developers with self-service capabilities', 'color: #F8FAFC; font-size: 12px;');
+        console.log('%cCreate, deploy, and manage your infrastructure', 'color: #94A3B8; font-size: 12px;');
+    </script>
+</body>
+</html>

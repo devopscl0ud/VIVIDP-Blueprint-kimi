@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics - VividP</title>
+    <meta name="description" content="Advanced analytics and predictive insights for your infrastructure with AI-powered visualizations.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Core Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        :root {
+            --color-deep-space: #0A0E1A;
+            --color-nebula-blue: #1E3A8A;
+            --color-circuit-teal: #0891B2;
+            --color-electric-cyan: #06B6D4;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--color-deep-space);
+            color: #F8FAFC;
+            overflow-x: hidden;
+        }
+        
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Background Effects */
+        .circuit-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background: radial-gradient(ellipse at center, var(--color-deep-space) 0%, #000000 100%);
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 280px;
+            z-index: 40;
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar.collapsed {
+            transform: translateX(-240px);
+        }
+        
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 35;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+        
+        .main-content.expanded {
+            margin-left: 40px;
+        }
+        
+        /* Navigation */
+        .nav-item {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin: 4px 0;
+        }
+        
+        .nav-item:hover {
+            background: rgba(6, 182, 212, 0.1);
+            transform: translateX(4px);
+        }
+        
+        .nav-item.active {
+            background: rgba(6, 182, 212, 0.2);
+            border-left: 3px solid var(--color-electric-cyan);
+        }
+        
+        /* Analytics Cards */
+        .analytics-card {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .analytics-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.2);
+            border-color: var(--color-electric-cyan);
+        }
+        
+        /* Natural Language Query Interface */
+        .nlq-interface {
+            background: rgba(30, 58, 138, 0.2);
+            border: 2px solid rgba(8, 145, 178, 0.3);
+            border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+        
+        .nlq-interface:focus-within {
+            border-color: var(--color-electric-cyan);
+            box-shadow: 0 0 30px rgba(6, 182, 212, 0.3);
+        }
+        
+        /* Query Suggestions */
+        .query-suggestion {
+            background: rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            border-radius: 20px;
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: var(--color-electric-cyan);
+        }
+        
+        .query-suggestion:hover {
+            background: rgba(6, 182, 212, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        /* 3D Visualization Container */
+        .webgpu-container {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Animations */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+        
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(6, 182, 212, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(6, 182, 212, 0.6); }
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .main-content.expanded {
+                margin-left: 0;
+            }
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 58, 138, 0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(8, 145, 178, 0.5);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(6, 182, 212, 0.7);
+        }
+        
+        /* Gradient Text */
+        .gradient-text {
+            background: linear-gradient(135deg, var(--color-nebula-blue), var(--color-electric-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
+</head>
+<body>
+    <!-- Background Effects -->
+    <div class="circuit-bg"></div>
+    
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    
+    <!-- Sidebar -->
+    <nav class="sidebar glass" id="sidebar">
+        <!-- Logo and Brand -->
+        <div class="p-6 border-b border-gray-700">
+            <div class="flex items-center space-x-3">
+                <img src="resources/icons/logo.png" alt="VividP" class="w-8 h-8">
+                <span class="text-xl font-bold gradient-text">VividP</span>
+                <button class="ml-auto lg:hidden text-gray-400 hover:text-white" id="sidebar-toggle">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Navigation Menu -->
+        <div class="p-4">
+            <div class="space-y-2">
+                <!-- Dashboard -->
+                <a href="dashboard.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                
+                <!-- Analytics -->
+                <a href="analytics.html" class="nav-item active flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    <span>Analytics</span>
+                </a>
+                
+                <!-- Security -->
+                <a href="security.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Security</span>
+                </a>
+                
+                <!-- Portal -->
+                <a href="portal.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Portal</span>
+                </a>
+                
+                <!-- Settings -->
+                <a href="settings.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- User Profile -->
+        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                    <span class="text-white font-semibold text-sm">JD</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-white truncate">John Doe</p>
+                    <p class="text-xs text-gray-400 truncate">john@company.com</p>
+                </div>
+                <button class="text-gray-400 hover:text-white" onclick="showUserMenu()">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 8.586l3.293-3.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+        <!-- Header -->
+        <header class="glass border-b border-gray-700 px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button class="lg:hidden text-gray-400 hover:text-white" id="mobile-menu-btn">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <h1 class="text-2xl font-bold text-white">Analytics</h1>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <!-- Time Range Selector -->
+                    <div class="flex bg-gray-800 rounded-lg p-1">
+                        <button class="px-3 py-1 text-sm bg-cyan-500 text-white rounded-md" id="time-1h">1H</button>
+                        <button class="px-3 py-1 text-sm text-gray-400 hover:text-white" id="time-24h">24H</button>
+                        <button class="px-3 py-1 text-sm text-gray-400 hover:text-white" id="time-7d">7D</button>
+                        <button class="px-3 py-1 text-sm text-gray-400 hover:text-white" id="time-30d">30D</button>
+                    </div>
+                    
+                    <!-- Export Button -->
+                    <button class="bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm font-medium" onclick="exportData()">
+                        Export
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Analytics Content -->
+        <div class="p-6">
+            <!-- Natural Language Query Interface -->
+            <div class="mb-8 fade-in">
+                <div class="nlq-interface p-6">
+                    <div class="flex items-center space-x-4 mb-4">
+                        <div class="w-12 h-12 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.987 3.987 0 01-2 3.465 5.985 5.985 0 01-3.133.748V14a2 2 0 002 2h2a2 2 0 002-2v-1.133a5.985 5.985 0 01-3.133-.748A3.987 3.987 0 019 8a3 3 0 016 0z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-bold text-white">Ask VividP Analytics</h2>
+                            <p class="text-gray-400">Query your infrastructure using natural language</p>
+                        </div>
+                    </div>
+                    
+                    <div class="relative mb-4">
+                        <input 
+                            type="text" 
+                            id="nlq-input"
+                            placeholder="e.g., Show me deployment latency trends for the last 30 days..."
+                            class="w-full bg-gray-800/50 border border-gray-600 rounded-lg px-4 py-3 pr-12 text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400"
+                        >
+                        <button class="absolute right-3 top-1/2 transform -translate-y-1/2 text-cyan-400 hover:text-cyan-300" onclick="executeQuery()">
+                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2">
+                        <div class="query-suggestion" onclick="useSuggestion('Show me CPU usage trends for all services')">
+                            CPU usage trends
+                        </div>
+                        <div class="query-suggestion" onclick="useSuggestion('Display memory utilization by service')">
+                            Memory utilization
+                        </div>
+                        <div class="query-suggestion" onclick="useSuggestion('Show network traffic patterns')">
+                            Network traffic
+                        </div>
+                        <div class="query-suggestion" onclick="useSuggestion('Predict resource needs for next week')">
+                            Resource prediction
+                        </div>
+                        <div class="query-suggestion" onclick="useSuggestion('Identify performance bottlenecks')">
+                            Bottleneck analysis
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Analytics Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Large Visualization Area -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- WebGPU 3D Network Topology -->
+                    <div class="analytics-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">3D Network Topology</h3>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 text-xs bg-cyan-500/20 text-cyan-400 rounded-full" onclick="toggleTopologyView('services')">Services</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full" onclick="toggleTopologyView('infrastructure')">Infrastructure</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full" onclick="toggleTopologyView('dataflow')">Data Flow</button>
+                            </div>
+                        </div>
+                        
+                        <div class="webgpu-container" style="height: 400px;">
+                            <div id="topology-3d" class="w-full h-full">
+                                <div class="flex items-center justify-center h-full text-gray-400">
+                                    <div class="text-center">
+                                        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center pulse-glow">
+                                            <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"></path>
+                                            </svg>
+                                        </div>
+                                        <p class="text-lg font-medium">WebGPU 3D Network Visualization</p>
+                                        <p class="text-sm mt-2">Interactive topology with real-time data flows</p>
+                                        <button class="mt-4 px-4 py-2 bg-cyan-500/20 text-cyan-400 rounded-lg hover:bg-cyan-500/30 transition-colors" onclick="init3DTopology()">
+                                            Initialize 3D View
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Predictive Analytics Chart -->
+                    <div class="analytics-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">Predictive Analytics</h3>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 text-xs bg-green-500/20 text-green-400 rounded-full" onclick="togglePrediction('cpu')">CPU</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full" onclick="togglePrediction('memory')">Memory</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full" onclick="togglePrediction('storage')">Storage</button>
+                            </div>
+                        </div>
+                        <div id="predictive-chart" style="height: 300px;"></div>
+                    </div>
+                    
+                    <!-- Anomaly Detection -->
+                    <div class="analytics-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">Anomaly Detection</h3>
+                            <button class="text-cyan-400 hover:text-cyan-300 text-sm font-medium" onclick="refreshAnomalies()">
+                                Refresh
+                            </button>
+                        </div>
+                        <div id="anomaly-chart" style="height: 250px;"></div>
+                    </div>
+                </div>
+                
+                <!-- Right Sidebar -->
+                <div class="space-y-6">
+                    <!-- Query Results -->
+                    <div class="analytics-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Query Results</h3>
+                        <div id="query-results" class="space-y-4">
+                            <div class="text-center text-gray-400 py-8">
+                                <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" clip-rule="evenodd"></path>
+                                </svg>
+                                <p>Enter a query to see results</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Key Metrics -->
+                    <div class="analytics-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Key Metrics</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400">Avg Response Time</span>
+                                <span class="text-green-400 font-mono">142ms</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400">Error Rate</span>
+                                <span class="text-green-400 font-mono">0.02%</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400">Throughput</span>
+                                <span class="text-cyan-400 font-mono">2.4K RPS</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-400">Availability</span>
+                                <span class="text-green-400 font-mono">99.97%</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Insights -->
+                    <div class="analytics-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">AI Insights</h3>
+                        <div class="space-y-4" id="analytics-ai-insights">
+                            <!-- AI insights will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Export Options -->
+                    <div class="analytics-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Export Data</h3>
+                        <div class="space-y-3">
+                            <button class="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" onclick="exportToCSV()">
+                                Export to CSV
+                            </button>
+                            <button class="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" onclick="exportToJSON()">
+                                Export to JSON
+                            </button>
+                            <button class="w-full bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" onclick="exportToPDF()">
+                                Export to PDF
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        // Analytics Page JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            initAnalytics();
+            initCharts();
+            initSidebar();
+            populateAIInsights();
+        });
+        
+        // Initialize Analytics Page
+        function initAnalytics() {
+            // Animate cards on load
+            setTimeout(() => {
+                document.querySelectorAll('.fade-in').forEach((card, index) => {
+                    setTimeout(() => {
+                        card.classList.add('visible');
+                    }, index * 100);
+                });
+            }, 100);
+            
+            // Initialize time range selector
+            initTimeRangeSelector();
+        }
+        
+        // Initialize Charts
+        function initCharts() {
+            initPredictiveChart();
+            initAnomalyChart();
+        }
+        
+        // Initialize Predictive Analytics Chart
+        function initPredictiveChart() {
+            const chartDom = document.getElementById('predictive-chart');
+            const myChart = echarts.init(chartDom);
+            
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(30, 58, 138, 0.9)',
+                    borderColor: 'rgba(8, 145, 178, 0.3)',
+                    textStyle: { color: '#F8FAFC' }
+                },
+                legend: {
+                    data: ['Historical', 'Predicted', 'Confidence Interval'],
+                    textStyle: { color: '#94A3B8' },
+                    top: 10
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed'],
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' },
+                    splitLine: { lineStyle: { color: '#374151' } }
+                },
+                series: [
+                    {
+                        name: 'Historical',
+                        type: 'line',
+                        data: [65, 72, 68, 75, 82, 78, 85, null, null, null],
+                        smooth: true,
+                        lineStyle: { color: '#06B6D4', width: 3 },
+                        areaStyle: { color: 'rgba(6, 182, 212, 0.1)' }
+                    },
+                    {
+                        name: 'Predicted',
+                        type: 'line',
+                        data: [null, null, null, null, null, null, 85, 88, 92, 89],
+                        smooth: true,
+                        lineStyle: { color: '#10B981', width: 3, type: 'dashed' },
+                        areaStyle: { color: 'rgba(16, 185, 129, 0.1)' }
+                    },
+                    {
+                        name: 'Confidence Interval',
+                        type: 'line',
+                        data: [null, null, null, null, null, null, 82, 85, 89, 86],
+                        smooth: true,
+                        lineStyle: { color: '#F59E0B', width: 2, opacity: 0.6 },
+                        areaStyle: { color: 'rgba(245, 158, 11, 0.05)' }
+                    }
+                ]
+            };
+            
+            myChart.setOption(option);
+            
+            // Handle resize
+            window.addEventListener('resize', function() {
+                myChart.resize();
+            });
+        }
+        
+        // Initialize Anomaly Detection Chart
+        function initAnomalyChart() {
+            const chartDom = document.getElementById('anomaly-chart');
+            const myChart = echarts.init(chartDom);
+            
+            // Generate sample data with anomalies
+            const data = [];
+            for (let i = 0; i < 100; i++) {
+                const base = 50 + Math.sin(i / 10) * 20;
+                const noise = Math.random() * 5;
+                let value = base + noise;
+                
+                // Add anomalies
+                if (i === 30 || i === 60 || i === 85) {
+                    value = base + 30 + Math.random() * 10;
+                }
+                
+                data.push([i, value]);
+            }
+            
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(30, 58, 138, 0.9)',
+                    borderColor: 'rgba(8, 145, 178, 0.3)',
+                    textStyle: { color: '#F8FAFC' }
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' },
+                    splitLine: { lineStyle: { color: '#374151' } }
+                },
+                series: [
+                    {
+                        name: 'Normal Data',
+                        type: 'scatter',
+                        data: data.filter((_, i) => i !== 30 && i !== 60 && i !== 85),
+                        symbolSize: 6,
+                        itemStyle: { color: '#06B6D4' }
+                    },
+                    {
+                        name: 'Anomalies',
+                        type: 'scatter',
+                        data: [data[30], data[60], data[85]],
+                        symbolSize: 10,
+                        itemStyle: { color: '#EF4444' }
+                    }
+                ]
+            };
+            
+            myChart.setOption(option);
+            
+            // Handle resize
+            window.addEventListener('resize', function() {
+                myChart.resize();
+            });
+        }
+        
+        // Initialize Time Range Selector
+        function initTimeRangeSelector() {
+            const buttons = ['time-1h', 'time-24h', 'time-7d', 'time-30d'];
+            
+            buttons.forEach(buttonId => {
+                document.getElementById(buttonId).addEventListener('click', function() {
+                    // Remove active class from all buttons
+                    buttons.forEach(id => {
+                        const btn = document.getElementById(id);
+                        btn.className = 'px-3 py-1 text-sm text-gray-400 hover:text-white';
+                    });
+                    
+                    // Add active class to clicked button
+                    this.className = 'px-3 py-1 text-sm bg-cyan-500 text-white rounded-md';
+                    
+                    // Update charts based on selected time range
+                    updateChartsForTimeRange(buttonId.replace('time-', ''));
+                });
+            });
+        }
+        
+        // Update Charts for Time Range
+        function updateChartsForTimeRange(range) {
+            showNotification(`Updated charts for ${range} time range`, 'info');
+            // In a real application, this would update all charts with new data
+        }
+        
+        // Initialize Sidebar
+        function initSidebar() {
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            const sidebar = document.getElementById('sidebar');
+            
+            function toggleSidebar() {
+                sidebar.classList.toggle('active');
+                sidebarOverlay.classList.toggle('active');
+            }
+            
+            sidebarToggle.addEventListener('click', toggleSidebar);
+            mobileMenuBtn.addEventListener('click', toggleSidebar);
+            sidebarOverlay.addEventListener('click', toggleSidebar);
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 1024) {
+                    sidebar.classList.remove('active');
+                    sidebarOverlay.classList.remove('active');
+                }
+            });
+        }
+        
+        // Populate AI Insights
+        function populateAIInsights() {
+            const insights = [
+                {
+                    type: 'prediction',
+                    title: 'Resource Scaling Prediction',
+                    message: 'Based on current trends, CPU usage will increase by 25% next week. Consider scaling the API gateway cluster.',
+                    confidence: 'High'
+                },
+                {
+                    type: 'anomaly',
+                    title: 'Traffic Pattern Anomaly',
+                    message: 'Unusual spike in database queries detected at 2:30 AM. This may indicate a batch job or potential issue.',
+                    confidence: 'Medium'
+                },
+                {
+                    type: 'optimization',
+                    title: 'Performance Optimization Opportunity',
+                    message: 'Memory usage in the payment service is 40% higher than expected. Review memory allocation settings.',
+                    confidence: 'High'
+                }
+            ];
+            
+            const container = document.getElementById('analytics-ai-insights');
+            container.innerHTML = insights.map(insight => `
+                <div class="border-l-4 ${getInsightBorderColor(insight.type)} bg-gray-800/30 p-4 rounded-r-lg">
+                    <div class="flex items-start space-x-3">
+                        <div class="flex-shrink-0">
+                            ${getInsightIcon(insight.type)}
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="text-sm font-semibold text-white">${insight.title}</h4>
+                            <p class="text-sm text-gray-300 mt-1">${insight.message}</p>
+                            <div class="flex items-center space-x-2 mt-2">
+                                <span class="text-xs px-2 py-1 bg-gray-700 rounded-full text-gray-300">${insight.confidence} confidence</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Utility Functions
+        function getInsightBorderColor(type) {
+            const colors = {
+                prediction: 'border-blue-400',
+                anomaly: 'border-yellow-400',
+                optimization: 'border-green-400'
+            };
+            return colors[type] || 'border-cyan-400';
+        }
+        
+        function getInsightIcon(type) {
+            const icons = {
+                prediction: '<svg class="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>',
+                anomaly: '<svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>',
+                optimization: '<svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[type] || icons.prediction;
+        }
+        
+        // Interactive Functions
+        function executeQuery() {
+            const input = document.getElementById('nlq-input');
+            const query = input.value.trim();
+            
+            if (!query) {
+                showNotification('Please enter a query first', 'warning');
+                return;
+            }
+            
+            // Show loading state
+            input.disabled = true;
+            input.placeholder = 'Processing query...';
+            
+            // Simulate query processing
+            setTimeout(() => {
+                input.disabled = false;
+                input.placeholder = 'e.g., Show me deployment latency trends for the last 30 days...';
+                
+                // Display results
+                displayQueryResults(query);
+                
+                showNotification('Query executed successfully', 'success');
+            }, 2000);
+        }
+        
+        function useSuggestion(suggestion) {
+            document.getElementById('nlq-input').value = suggestion;
+            executeQuery();
+        }
+        
+        function displayQueryResults(query) {
+            const resultsContainer = document.getElementById('query-results');
+            
+            // Simulate different types of results based on query
+            let results = '';
+            
+            if (query.includes('CPU') || query.includes('cpu')) {
+                results = `
+                    <div class="bg-gray-800/50 rounded-lg p-4">
+                        <h4 class="text-sm font-semibold text-white mb-2">CPU Usage Analysis</h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Average CPU:</span>
+                                <span class="text-cyan-400 font-mono">68.2%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Peak CPU:</span>
+                                <span class="text-yellow-400 font-mono">92.1%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Lowest CPU:</span>
+                                <span class="text-green-400 font-mono">34.5%</span>
+                            </div>
+                            <div class="mt-3 p-3 bg-blue-900/20 rounded-lg">
+                                <p class="text-sm text-blue-300">CPU usage is within normal range. Peak occurred during deployment window.</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (query.includes('memory') || query.includes('Memory')) {
+                results = `
+                    <div class="bg-gray-800/50 rounded-lg p-4">
+                        <h4 class="text-sm font-semibold text-white mb-2">Memory Utilization</h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Current Memory:</span>
+                                <span class="text-cyan-400 font-mono">45.8%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Memory Trend:</span>
+                                <span class="text-green-400 font-mono">+2.1%</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Peak Memory:</span>
+                                <span class="text-yellow-400 font-mono">67.3%</span>
+                            </div>
+                            <div class="mt-3 p-3 bg-green-900/20 rounded-lg">
+                                <p class="text-sm text-green-300">Memory usage is optimal. No scaling recommendations at this time.</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                results = `
+                    <div class="bg-gray-800/50 rounded-lg p-4">
+                        <h4 class="text-sm font-semibold text-white mb-2">Query Results</h4>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Services Analyzed:</span>
+                                <span class="text-cyan-400 font-mono">24</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Metrics Retrieved:</span>
+                                <span class="text-cyan-400 font-mono">156</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">Processing Time:</span>
+                                <span class="text-green-400 font-mono">1.2s</span>
+                            </div>
+                            <div class="mt-3 p-3 bg-gray-700/50 rounded-lg">
+                                <p class="text-sm text-gray-300">Analysis complete. No critical issues detected in your query scope.</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            resultsContainer.innerHTML = results;
+        }
+        
+        function toggleTopologyView(view) {
+            const buttons = document.querySelectorAll('[onclick^="toggleTopologyView"]');
+            buttons.forEach(btn => {
+                btn.className = 'px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full';
+            });
+            
+            event.target.className = 'px-3 py-1 text-xs bg-cyan-500/20 text-cyan-400 rounded-full';
+            
+            showNotification(`Switched to ${view} topology view`, 'info');
+        }
+        
+        function togglePrediction(type) {
+            const buttons = document.querySelectorAll('[onclick^="togglePrediction"]');
+            buttons.forEach(btn => {
+                btn.className = 'px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full';
+            });
+            
+            event.target.className = 'px-3 py-1 text-xs bg-green-500/20 text-green-400 rounded-full';
+            
+            showNotification(`Showing ${type} predictions`, 'info');
+        }
+        
+        function init3DTopology() {
+            showNotification('Initializing WebGPU 3D topology visualization...', 'info');
+            
+            // Simulate 3D initialization
+            setTimeout(() => {
+                const container = document.getElementById('topology-3d');
+                container.innerHTML = `
+                    <div class="flex items-center justify-center h-full">
+                        <div class="text-center">
+                            <div class="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center animate-pulse">
+                                <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                                </svg>
+                            </div>
+                            <p class="text-lg font-medium text-white">3D Network Topology</p>
+                            <p class="text-sm text-gray-400 mt-2">Interactive visualization with real-time data flows</p>
+                            <div class="mt-4 flex space-x-2 justify-center">
+                                <button class="px-3 py-1 text-xs bg-cyan-500/20 text-cyan-400 rounded-full">Rotate</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full">Zoom</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full">Filter</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                showNotification('3D topology visualization initialized', 'success');
+            }, 2000);
+        }
+        
+        function refreshAnomalies() {
+            showNotification('Refreshing anomaly detection data...', 'info');
+            setTimeout(() => {
+                initAnomalyChart();
+                showNotification('Anomaly detection data refreshed', 'success');
+            }, 1500);
+        }
+        
+        function exportData() {
+            showNotification('Exporting analytics data...', 'info');
+            setTimeout(() => {
+                showNotification('Analytics data exported successfully', 'success');
+            }, 2000);
+        }
+        
+        function exportToCSV() {
+            showNotification('Exporting to CSV format...', 'info');
+            setTimeout(() => {
+                showNotification('CSV export completed', 'success');
+            }, 1500);
+        }
+        
+        function exportToJSON() {
+            showNotification('Exporting to JSON format...', 'info');
+            setTimeout(() => {
+                showNotification('JSON export completed', 'success');
+            }, 1500);
+        }
+        
+        function exportToPDF() {
+            showNotification('Generating PDF report...', 'info');
+            setTimeout(() => {
+                showNotification('PDF report generated successfully', 'success');
+            }, 3000);
+        }
+        
+        function showUserMenu() {
+            showNotification('User menu would be displayed here', 'info');
+        }
+        
+        // Notification System
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg glass max-w-sm transform translate-x-full transition-transform duration-300`;
+            
+            const colors = {
+                success: 'border-green-400 text-green-400',
+                error: 'border-red-400 text-red-400',
+                warning: 'border-yellow-400 text-yellow-400',
+                info: 'border-cyan-400 text-cyan-400'
+            };
+            
+            notification.classList.add(colors[type] || colors.info);
+            notification.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <div class="flex-shrink-0">
+                        ${getNotificationIcon(type)}
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium">${message}</p>
+                    </div>
+                    <button class="flex-shrink-0 text-gray-400 hover:text-white" onclick="this.parentElement.parentElement.remove()">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Animate in
+            setTimeout(() => {
+                notification.style.transform = 'translateX(0)';
+            }, 100);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                notification.style.transform = 'translateX(full)';
+                setTimeout(() => {
+                    if (notification.parentElement) {
+                        notification.remove();
+                    }
+                }, 300);
+            }, 5000);
+        }
+        
+        function getNotificationIcon(type) {
+            const icons = {
+                success: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>',
+                error: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>',
+                warning: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>',
+                info: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[type] || icons.info;
+        }
+        
+        // Console easter egg
+        console.log('%c📊 VividP Analytics - AI-Powered Data Insights', 'color: #06B6D4; font-size: 16px; font-weight: bold;');
+        console.log('%cAdvanced visualizations with predictive analytics', 'color: #F8FAFC; font-size: 12px;');
+        console.log('%cTry the natural language query interface!', 'color: #94A3B8; font-size: 12px;');
+    </script>
+</body>
+</html>

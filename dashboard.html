@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - VividP</title>
+    <meta name="description" content="VividP Dashboard - AI-powered insights, real-time monitoring, and intelligent infrastructure management.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Core Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        :root {
+            --color-deep-space: #0A0E1A;
+            --color-nebula-blue: #1E3A8A;
+            --color-circuit-teal: #0891B2;
+            --color-electric-cyan: #06B6D4;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--color-deep-space);
+            color: #F8FAFC;
+            overflow-x: hidden;
+        }
+        
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Background Effects */
+        .circuit-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background: radial-gradient(ellipse at center, var(--color-deep-space) 0%, #000000 100%);
+        }
+        
+        .particles-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 280px;
+            z-index: 40;
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar.collapsed {
+            transform: translateX(-240px);
+        }
+        
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 35;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+        
+        .main-content.expanded {
+            margin-left: 40px;
+        }
+        
+        /* Navigation */
+        .nav-item {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin: 4px 0;
+        }
+        
+        .nav-item:hover {
+            background: rgba(6, 182, 212, 0.1);
+            transform: translateX(4px);
+        }
+        
+        .nav-item.active {
+            background: rgba(6, 182, 212, 0.2);
+            border-left: 3px solid var(--color-electric-cyan);
+        }
+        
+        /* AI Chat Interface */
+        .ai-chat-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 30;
+        }
+        
+        .ai-chat-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--color-nebula-blue), var(--color-circuit-teal));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(6, 182, 212, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .ai-chat-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 30px rgba(6, 182, 212, 0.5);
+        }
+        
+        .ai-chat-panel {
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 350px;
+            height: 500px;
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+            border-radius: 12px;
+            opacity: 0;
+            transform: translateY(20px) scale(0.9);
+            transition: all 0.3s ease;
+            pointer-events: none;
+        }
+        
+        .ai-chat-panel.active {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: all;
+        }
+        
+        /* Cards and Components */
+        .dashboard-card {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .dashboard-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.2);
+            border-color: var(--color-electric-cyan);
+        }
+        
+        /* Status Indicators */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-online { background: var(--color-success); }
+        .status-warning { background: var(--color-warning); }
+        .status-error { background: var(--color-error); }
+        .status-offline { background: #64748B; }
+        
+        /* Animations */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+        
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(6, 182, 212, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(6, 182, 212, 0.6); }
+        }
+        
+        /* Mobile Optimizations */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .main-content.expanded {
+                margin-left: 0;
+            }
+            
+            .ai-chat-panel {
+                width: 300px;
+                height: 400px;
+            }
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 58, 138, 0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(8, 145, 178, 0.5);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(6, 182, 212, 0.7);
+        }
+    </style>
+</head>
+<body>
+    <!-- Background Effects -->
+    <div class="circuit-bg"></div>
+    <div class="particles-container" id="particles"></div>
+    
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    
+    <!-- Sidebar -->
+    <nav class="sidebar glass" id="sidebar">
+        <!-- Logo and Brand -->
+        <div class="p-6 border-b border-gray-700">
+            <div class="flex items-center space-x-3">
+                <img src="resources/icons/logo.png" alt="VividP" class="w-8 h-8">
+                <span class="text-xl font-bold gradient-text">VividP</span>
+                <button class="ml-auto lg:hidden text-gray-400 hover:text-white" id="sidebar-toggle">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Navigation Menu -->
+        <div class="p-4">
+            <div class="space-y-2">
+                <!-- Dashboard -->
+                <a href="dashboard.html" class="nav-item active flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                
+                <!-- Analytics -->
+                <a href="analytics.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    <span>Analytics</span>
+                </a>
+                
+                <!-- Security -->
+                <a href="security.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Security</span>
+                </a>
+                
+                <!-- Portal -->
+                <a href="portal.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Portal</span>
+                </a>
+                
+                <!-- Settings -->
+                <a href="settings.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+        
+        <!-- User Profile -->
+        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                    <span class="text-white font-semibold text-sm">JD</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-white truncate">John Doe</p>
+                    <p class="text-xs text-gray-400 truncate">john@company.com</p>
+                </div>
+                <button class="text-gray-400 hover:text-white" onclick="showUserMenu()">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+        <!-- Header -->
+        <header class="glass border-b border-gray-700 px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button class="lg:hidden text-gray-400 hover:text-white" id="mobile-menu-btn">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <h1 class="text-2xl font-bold text-white">Dashboard</h1>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <!-- Search -->
+                    <div class="relative hidden md:block">
+                        <input type="text" placeholder="Search..." class="bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 pl-10 text-sm focus:outline-none focus:border-cyan-400">
+                        <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    
+                    <!-- Notifications -->
+                    <button class="relative text-gray-400 hover:text-white" onclick="showNotifications()">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"></path>
+                        </svg>
+                        <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+                    </button>
+                    
+                    <!-- Theme Toggle -->
+                    <button class="text-gray-400 hover:text-white" onclick="toggleTheme()">
+                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Dashboard Content -->
+        <div class="p-6">
+            <!-- Welcome Section -->
+            <div class="mb-8 fade-in">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 class="text-3xl font-bold text-white mb-2">Welcome back, John!</h2>
+                        <p class="text-gray-400">Here's what's happening with your infrastructure today.</p>
+                    </div>
+                    <div class="hidden lg:block">
+                        <div class="text-sm text-gray-400">
+                            Last updated: <span class="text-cyan-400" id="last-updated">Just now</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="dashboard-card p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-400">Active Services</p>
+                                <p class="text-2xl font-bold text-white">24</p>
+                                <p class="text-xs text-green-400">+3 from yesterday</p>
+                            </div>
+                            <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-card p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-400">CPU Usage</p>
+                                <p class="text-2xl font-bold text-white">68%</p>
+                                <p class="text-xs text-yellow-400">-5% from peak</p>
+                            </div>
+                            <div class="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-card p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-400">Memory</p>
+                                <p class="text-2xl font-bold text-white">45%</p>
+                                <p class="text-xs text-green-400">Optimal range</p>
+                            </div>
+                            <div class="w-12 h-12 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-card p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-400">Security Alerts</p>
+                                <p class="text-2xl font-bold text-white">3</p>
+                                <p class="text-xs text-red-400">Requires attention</p>
+                            </div>
+                            <div class="w-12 h-12 bg-red-500/20 rounded-lg flex items-center justify-center">
+                                <svg class="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Dashboard Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- AI Insights Feed -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="dashboard-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">AI Insights</h3>
+                            <button class="text-cyan-400 hover:text-cyan-300 text-sm font-medium">
+                                View All
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4" id="ai-insights">
+                            <!-- AI insights will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- System Performance Chart -->
+                    <div class="dashboard-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">System Performance</h3>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 text-xs bg-cyan-500/20 text-cyan-400 rounded-full">1H</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full">24H</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full">7D</button>
+                            </div>
+                        </div>
+                        <div id="performance-chart" style="height: 300px;"></div>
+                    </div>
+                    
+                    <!-- Recent Activity -->
+                    <div class="dashboard-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">Recent Activity</h3>
+                            <button class="text-cyan-400 hover:text-cyan-300 text-sm font-medium">
+                                View All
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4" id="recent-activity">
+                            <!-- Activity items will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Sidebar -->
+                <div class="space-y-6">
+                    <!-- Quick Actions -->
+                    <div class="dashboard-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Quick Actions</h3>
+                        <div class="space-y-3">
+                            <button class="w-full bg-cyan-500/20 border border-cyan-500/30 rounded-lg px-4 py-3 text-cyan-400 hover:bg-cyan-500/30 transition-colors" onclick="createEnvironment()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Create Environment</span>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full bg-green-500/20 border border-green-500/30 rounded-lg px-4 py-3 text-green-400 hover:bg-green-500/30 transition-colors" onclick="deployService()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Deploy Service</span>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full bg-yellow-500/20 border border-yellow-500/30 rounded-lg px-4 py-3 text-yellow-400 hover:bg-yellow-500/30 transition-colors" onclick="runSecurityScan()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Security Scan</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Service Status -->
+                    <div class="dashboard-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Service Status</h3>
+                        <div class="space-y-4" id="service-status">
+                            <!-- Service status items will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Resource Usage -->
+                    <div class="dashboard-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Resource Usage</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-gray-400">CPU</span>
+                                    <span class="text-cyan-400">68%</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div class="bg-cyan-400 h-2 rounded-full" style="width: 68%"></div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-gray-400">Memory</span>
+                                    <span class="text-green-400">45%</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div class="bg-green-400 h-2 rounded-full" style="width: 45%"></div>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="flex justify-between text-sm mb-2">
+                                    <span class="text-gray-400">Storage</span>
+                                    <span class="text-yellow-400">82%</span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-2">
+                                    <div class="bg-yellow-400 h-2 rounded-full" style="width: 82%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <!-- AI Chat Interface -->
+    <div class="ai-chat-container">
+        <div class="ai-chat-panel" id="ai-chat-panel">
+            <div class="p-4 border-b border-gray-700">
+                <div class="flex items-center justify-between">
+                    <h4 class="font-semibold text-white">Ask VividP</h4>
+                    <button class="text-gray-400 hover:text-white" onclick="toggleAIChat()">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="p-4 h-80 overflow-y-auto" id="ai-chat-messages">
+                <!-- Chat messages will be populated by JavaScript -->
+            </div>
+            <div class="p-4 border-t border-gray-700">
+                <div class="flex space-x-2">
+                    <input 
+                        type="text" 
+                        placeholder="Ask anything about your infrastructure..." 
+                        class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-cyan-400"
+                        id="ai-chat-input"
+                    >
+                    <button class="bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm" onclick="sendAIMessage()">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="ai-chat-button pulse-glow" onclick="toggleAIChat()">
+            <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.987 3.987 0 01-2 3.465 5.985 5.985 0 01-3.133.748V14a2 2 0 002 2h2a2 2 0 002-2v-1.133a5.985 5.985 0 01-3.133-.748A3.987 3.987 0 019 8a3 3 0 016 0z" clip-rule="evenodd"></path>
+            </svg>
+        </div>
+    </div>
+    
+    <script>
+        // Dashboard JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            initParticles();
+            initDashboard();
+            initCharts();
+            initAIChat();
+            initSidebar();
+            updateLastUpdated();
+            
+            // Update time every minute
+            setInterval(updateLastUpdated, 60000);
+        });
+        
+        // Initialize particles
+        function initParticles() {
+            const container = document.getElementById('particles');
+            if (!container) return;
+            
+            // Create canvas for particles
+            const canvas = document.createElement('canvas');
+            canvas.style.position = 'absolute';
+            canvas.style.top = '0';
+            canvas.style.left = '0';
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+            canvas.style.pointerEvents = 'none';
+            container.appendChild(canvas);
+            
+            // Use simplified particle system for dashboard
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            const particles = [];
+            const particleCount = 30;
+            
+            for (let i = 0; i < particleCount; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    size: Math.random() * 2 + 1,
+                    opacity: Math.random() * 0.5 + 0.2
+                });
+            }
+            
+            function animateParticles() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                particles.forEach(particle => {
+                    particle.x += particle.vx;
+                    particle.y += particle.vy;
+                    
+                    // Wrap around edges
+                    if (particle.x > canvas.width) particle.x = 0;
+                    if (particle.x < 0) particle.x = canvas.width;
+                    if (particle.y > canvas.height) particle.y = 0;
+                    if (particle.y < 0) particle.y = canvas.height;
+                    
+                    // Draw particle
+                    ctx.beginPath();
+                    ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(6, 182, 212, ${particle.opacity})`;
+                    ctx.fill();
+                });
+                
+                requestAnimationFrame(animateParticles);
+            }
+            
+            animateParticles();
+            
+            // Handle resize
+            window.addEventListener('resize', function() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            });
+        }
+        
+        // Initialize dashboard
+        function initDashboard() {
+            populateAIInsights();
+            populateRecentActivity();
+            populateServiceStatus();
+            
+            // Animate cards on load
+            setTimeout(() => {
+                document.querySelectorAll('.fade-in').forEach((card, index) => {
+                    setTimeout(() => {
+                        card.classList.add('visible');
+                    }, index * 100);
+                });
+            }, 100);
+        }
+        
+        // Populate AI Insights
+        function populateAIInsights() {
+            const insights = [
+                {
+                    type: 'success',
+                    title: 'Performance Optimization Detected',
+                    message: 'CPU usage has decreased by 15% after recent deployment. Consider this configuration for other services.',
+                    time: '2 minutes ago'
+                },
+                {
+                    type: 'warning',
+                    title: 'Anomaly Detected',
+                    message: 'Unusual traffic pattern detected in the auth service. Investigate potential security concerns.',
+                    time: '15 minutes ago'
+                },
+                {
+                    type: 'info',
+                    title: 'Resource Scaling Recommendation',
+                    message: 'Memory usage trending upward. Consider scaling the database cluster by 2 nodes.',
+                    time: '1 hour ago'
+                },
+                {
+                    type: 'success',
+                    title: 'Security Scan Complete',
+                    message: 'All services passed security validation. No vulnerabilities detected in the latest scan.',
+                    time: '2 hours ago'
+                }
+            ];
+            
+            const container = document.getElementById('ai-insights');
+            container.innerHTML = insights.map(insight => `
+                <div class="border-l-4 ${getInsightBorderColor(insight.type)} bg-gray-800/30 p-4 rounded-r-lg">
+                    <div class="flex items-start space-x-3">
+                        <div class="flex-shrink-0">
+                            ${getInsightIcon(insight.type)}
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="text-sm font-semibold text-white">${insight.title}</h4>
+                            <p class="text-sm text-gray-300 mt-1">${insight.message}</p>
+                            <p class="text-xs text-gray-500 mt-2">${insight.time}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Populate Recent Activity
+        function populateRecentActivity() {
+            const activities = [
+                {
+                    user: 'Sarah Chen',
+                    action: 'deployed',
+                    target: 'payment-service v2.1.0',
+                    time: '5 minutes ago',
+                    status: 'success'
+                },
+                {
+                    user: 'Mike Johnson',
+                    action: 'created',
+                    target: 'staging environment',
+                    time: '12 minutes ago',
+                    status: 'success'
+                },
+                {
+                    user: 'System',
+                    action: 'detected',
+                    target: 'high memory usage in api-gateway',
+                    time: '18 minutes ago',
+                    status: 'warning'
+                },
+                {
+                    user: 'Alex Rivera',
+                    action: 'updated',
+                    target: 'security policies',
+                    time: '25 minutes ago',
+                    status: 'success'
+                }
+            ];
+            
+            const container = document.getElementById('recent-activity');
+            container.innerHTML = activities.map(activity => `
+                <div class="flex items-center space-x-3 py-3 border-b border-gray-700 last:border-b-0">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                        <span class="text-white font-semibold text-xs">${activity.user.split(' ').map(n => n[0]).join('')}</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm text-white">
+                            <span class="font-medium">${activity.user}</span>
+                            <span class="text-gray-400">${activity.action}</span>
+                            <span class="font-medium">${activity.target}</span>
+                        </p>
+                        <p class="text-xs text-gray-500">${activity.time}</p>
+                    </div>
+                    <div class="status-dot status-${activity.status}"></div>
+                </div>
+            `).join('');
+        }
+        
+        // Populate Service Status
+        function populateServiceStatus() {
+            const services = [
+                { name: 'API Gateway', status: 'online', uptime: '99.9%' },
+                { name: 'Auth Service', status: 'online', uptime: '99.8%' },
+                { name: 'Payment Service', status: 'warning', uptime: '97.2%' },
+                { name: 'Database', status: 'online', uptime: '99.9%' },
+                { name: 'Cache Layer', status: 'online', uptime: '99.7%' },
+                { name: 'Message Queue', status: 'error', uptime: '95.1%' }
+            ];
+            
+            const container = document.getElementById('service-status');
+            container.innerHTML = services.map(service => `
+                <div class="flex items-center justify-between py-2">
+                    <div class="flex items-center space-x-3">
+                        <div class="status-dot status-${service.status}"></div>
+                        <span class="text-sm text-white">${service.name}</span>
+                    </div>
+                    <span class="text-sm text-gray-400">${service.uptime}</span>
+                </div>
+            `).join('');
+        }
+        
+        // Initialize Charts
+        function initCharts() {
+            const chartDom = document.getElementById('performance-chart');
+            const myChart = echarts.init(chartDom);
+            
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(30, 58, 138, 0.9)',
+                    borderColor: 'rgba(8, 145, 178, 0.3)',
+                    textStyle: { color: '#F8FAFC' }
+                },
+                legend: {
+                    data: ['CPU', 'Memory', 'Network'],
+                    textStyle: { color: '#94A3B8' },
+                    top: 10
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' },
+                    splitLine: { lineStyle: { color: '#374151' } }
+                },
+                series: [
+                    {
+                        name: 'CPU',
+                        type: 'line',
+                        stack: 'Total',
+                        data: [65, 72, 68, 75, 82, 78, 68],
+                        smooth: true,
+                        lineStyle: { color: '#06B6D4' },
+                        areaStyle: { color: 'rgba(6, 182, 212, 0.1)' }
+                    },
+                    {
+                        name: 'Memory',
+                        type: 'line',
+                        stack: 'Total',
+                        data: [45, 48, 42, 47, 52, 49, 45],
+                        smooth: true,
+                        lineStyle: { color: '#10B981' },
+                        areaStyle: { color: 'rgba(16, 185, 129, 0.1)' }
+                    },
+                    {
+                        name: 'Network',
+                        type: 'line',
+                        stack: 'Total',
+                        data: [30, 35, 32, 38, 42, 39, 35],
+                        smooth: true,
+                        lineStyle: { color: '#F59E0B' },
+                        areaStyle: { color: 'rgba(245, 158, 11, 0.1)' }
+                    }
+                ]
+            };
+            
+            myChart.setOption(option);
+            
+            // Handle resize
+            window.addEventListener('resize', function() {
+                myChart.resize();
+            });
+        }
+        
+        // Initialize AI Chat
+        function initAIChat() {
+            const chatInput = document.getElementById('ai-chat-input');
+            chatInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendAIMessage();
+                }
+            });
+            
+            // Add initial welcome message
+            const messagesContainer = document.getElementById('ai-chat-messages');
+            messagesContainer.innerHTML = `
+                <div class="flex items-start space-x-3 mb-4">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.987 3.987 0 01-2 3.465 5.985 5.985 0 01-3.133.748V14a2 2 0 002 2h2a2 2 0 002-2v-1.133a5.985 5.985 0 01-3.133-.748A3.987 3.987 0 019 8a3 3 0 016 0z" clip-rule="evenodd"></path>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm text-white font-medium">VividP AI</p>
+                        <p class="text-sm text-gray-300 mt-1">Hello! I'm here to help you with your infrastructure. Ask me anything about your services, performance, or security.</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Initialize Sidebar
+        function initSidebar() {
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            const sidebar = document.getElementById('sidebar');
+            
+            function toggleSidebar() {
+                sidebar.classList.toggle('active');
+                sidebarOverlay.classList.toggle('active');
+            }
+            
+            sidebarToggle.addEventListener('click', toggleSidebar);
+            mobileMenuBtn.addEventListener('click', toggleSidebar);
+            sidebarOverlay.addEventListener('click', toggleSidebar);
+            
+            // Handle window resize
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 1024) {
+                    sidebar.classList.remove('active');
+                    sidebarOverlay.classList.remove('active');
+                }
+            });
+        }
+        
+        // Update Last Updated Time
+        function updateLastUpdated() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            document.getElementById('last-updated').textContent = timeString;
+        }
+        
+        // Utility Functions
+        function getInsightBorderColor(type) {
+            const colors = {
+                success: 'border-green-400',
+                warning: 'border-yellow-400',
+                error: 'border-red-400',
+                info: 'border-blue-400'
+            };
+            return colors[type] || colors.info;
+        }
+        
+        function getInsightIcon(type) {
+            const icons = {
+                success: '<svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>',
+                warning: '<svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>',
+                error: '<svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>',
+                info: '<svg class="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[type] || icons.info;
+        }
+        
+        // Interactive Functions
+        function toggleAIChat() {
+            const panel = document.getElementById('ai-chat-panel');
+            panel.classList.toggle('active');
+        }
+        
+        function sendAIMessage() {
+            const input = document.getElementById('ai-chat-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            const messagesContainer = document.getElementById('ai-chat-messages');
+            
+            // Add user message
+            messagesContainer.innerHTML += `
+                <div class="flex items-start space-x-3 mb-4">
+                    <div class="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
+                        <span class="text-white font-semibold text-xs">JD</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm text-white font-medium">You</p>
+                        <p class="text-sm text-gray-300 mt-1">${message}</p>
+                    </div>
+                </div>
+            `;
+            
+            // Clear input
+            input.value = '';
+            
+            // Simulate AI response
+            setTimeout(() => {
+                const responses = [
+                    "Based on your query, I can see that your infrastructure is performing well. The CPU usage has decreased by 15% since the last deployment.",
+                    "I've detected some unusual traffic patterns in your auth service. Would you like me to investigate further?",
+                    "Your memory usage is trending upward. I recommend scaling your database cluster by 2 nodes to maintain optimal performance.",
+                    "The security scan completed successfully. All services passed validation with no vulnerabilities detected."
+                ];
+                
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                
+                messagesContainer.innerHTML += `
+                    <div class="flex items-start space-x-3 mb-4">
+                        <div class="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.987 3.987 0 01-2 3.465 5.985 5.985 0 01-3.133.748V14a2 2 0 002 2h2a2 2 0 002-2v-1.133a5.985 5.985 0 01-3.133-.748A3.987 3.987 0 019 8a3 3 0 016 0z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm text-white font-medium">VividP AI</p>
+                            <p class="text-sm text-gray-300 mt-1">${randomResponse}</p>
+                        </div>
+                    </div>
+                `;
+                
+                // Scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 1000);
+            
+            // Scroll to bottom
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        function createEnvironment() {
+            showNotification('Opening environment creation wizard...', 'info');
+            setTimeout(() => {
+                window.location.href = 'portal.html';
+            }, 1000);
+        }
+        
+        function deployService() {
+            showNotification('Deploying new service... This would open the deployment wizard.', 'info');
+        }
+        
+        function runSecurityScan() {
+            showNotification('Initiating security scan across all services...', 'info');
+            setTimeout(() => {
+                showNotification('Security scan completed successfully. No vulnerabilities found.', 'success');
+            }, 3000);
+        }
+        
+        function showNotifications() {
+            showNotification('Opening notifications panel...', 'info');
+        }
+        
+        function toggleTheme() {
+            showNotification('Theme toggle would be implemented here', 'info');
+        }
+        
+        function showUserMenu() {
+            showNotification('User menu would be displayed here', 'info');
+        }
+        
+        // Notification System
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg glass max-w-sm transform translate-x-full transition-transform duration-300`;
+            
+            const colors = {
+                success: 'border-green-400 text-green-400',
+                error: 'border-red-400 text-red-400',
+                warning: 'border-yellow-400 text-yellow-400',
+                info: 'border-cyan-400 text-cyan-400'
+            };
+            
+            notification.classList.add(colors[type] || colors.info);
+            notification.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <div class="flex-shrink-0">
+                        ${getNotificationIcon(type)}
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium">${message}</p>
+                    </div>
+                    <button class="flex-shrink-0 text-gray-400 hover:text-white" onclick="this.parentElement.parentElement.remove()">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Animate in
+            setTimeout(() => {
+                notification.style.transform = 'translateX(0)';
+            }, 100);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                notification.style.transform = 'translateX(full)';
+                setTimeout(() => {
+                    if (notification.parentElement) {
+                        notification.remove();
+                    }
+                }, 300);
+            }, 5000);
+        }
+        
+        function getNotificationIcon(type) {
+            const icons = {
+                success: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>',
+                error: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>',
+                warning: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>',
+                info: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[type] || icons.info;
+        }
+        
+        // Console easter egg
+        console.log('%c🚀 VividP Dashboard - AI-Native Infrastructure Management', 'color: #06B6D4; font-size: 16px; font-weight: bold;');
+        console.log('%cWelcome to the future of developer platforms', 'color: #F8FAFC; font-size: 12px;');
+        console.log('%cTry asking the AI assistant about your infrastructure!', 'color: #94A3B8; font-size: 12px;');
+    </script>
+</body>
+</html>

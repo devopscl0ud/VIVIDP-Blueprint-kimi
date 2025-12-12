@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security - VividP</title>
+    <meta name="description" content="eBPF-based security observability and zero-trust policy management.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Core Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.1/anime.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        :root {
+            --color-deep-space: #0A0E1A;
+            --color-nebula-blue: #1E3A8A;
+            --color-circuit-teal: #0891B2;
+            --color-electric-cyan: #06B6D4;
+            --color-success: #10B981;
+            --color-warning: #F59E0B;
+            --color-error: #EF4444;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--color-deep-space);
+            color: #F8FAFC;
+            overflow-x: hidden;
+        }
+        
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .circuit-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -2;
+            background: radial-gradient(ellipse at center, var(--color-deep-space) 0%, #000000 100%);
+        }
+        
+        .glass {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 280px;
+            z-index: 40;
+            transition: transform 0.3s ease;
+        }
+        
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+        }
+        
+        .nav-item {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin: 4px 0;
+        }
+        
+        .nav-item:hover {
+            background: rgba(6, 182, 212, 0.1);
+            transform: translateX(4px);
+        }
+        
+        .nav-item.active {
+            background: rgba(6, 182, 212, 0.2);
+            border-left: 3px solid var(--color-electric-cyan);
+        }
+        
+        .security-card {
+            background: rgba(30, 58, 138, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .security-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 30px rgba(6, 182, 212, 0.2);
+            border-color: var(--color-electric-cyan);
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, var(--color-nebula-blue), var(--color-electric-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+        
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .status-secure { background: var(--color-success); }
+        .status-warning { background: var(--color-warning); }
+        .status-critical { background: var(--color-error); }
+        .status-neutral { background: #64748B; }
+        
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.active { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+        }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 58, 138, 0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(8, 145, 178, 0.5);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="circuit-bg"></div>
+    
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    
+    <!-- Sidebar -->
+    <nav class="sidebar glass" id="sidebar">
+        <div class="p-6 border-b border-gray-700">
+            <div class="flex items-center space-x-3">
+                <img src="resources/icons/logo.png" alt="VividP" class="w-8 h-8">
+                <span class="text-xl font-bold gradient-text">VividP</span>
+                <button class="ml-auto lg:hidden text-gray-400 hover:text-white" id="sidebar-toggle">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-4">
+            <div class="space-y-2">
+                <a href="dashboard.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Dashboard</span>
+                </a>
+                
+                <a href="analytics.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    <span>Analytics</span>
+                </a>
+                
+                <a href="security.html" class="nav-item active flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Security</span>
+                </a>
+                
+                <a href="portal.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                    </svg>
+                    <span>Portal</span>
+                </a>
+                
+                <a href="settings.html" class="nav-item flex items-center space-x-3 px-4 py-3">
+                    <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"></path>
+                    </svg>
+                    <span>Settings</span>
+                </a>
+            </div>
+        </div>
+        
+        <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
+                    <span class="text-white font-semibold text-sm">JD</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-white truncate">John Doe</p>
+                    <p class="text-xs text-gray-400 truncate">john@company.com</p>
+                </div>
+                <button class="text-gray-400 hover:text-white" onclick="showUserMenu()">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 8.586l3.293-3.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+        <header class="glass border-b border-gray-700 px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button class="lg:hidden text-gray-400 hover:text-white" id="mobile-menu-btn">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                    <h1 class="text-2xl font-bold text-white">Security</h1>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <button class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium" onclick="emergencyResponse()">
+                        Emergency Response
+                    </button>
+                    <button class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium" onclick="runSecurityScan()">
+                        Run Scan
+                    </button>
+                </div>
+            </div>
+        </header>
+        
+        <div class="p-6">
+            <!-- Security Overview -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="security-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Security Score</p>
+                            <p class="text-2xl font-bold text-green-400">94/100</p>
+                            <p class="text-xs text-green-400">+2 from last scan</p>
+                        </div>
+                        <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="security-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Active Threats</p>
+                            <p class="text-2xl font-bold text-yellow-400">3</p>
+                            <p class="text-xs text-yellow-400">Requires attention</p>
+                        </div>
+                        <div class="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="security-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Vulnerabilities</p>
+                            <p class="text-2xl font-bold text-red-400">7</p>
+                            <p class="text-xs text-red-400">2 critical</p>
+                        </div>
+                        <div class="w-12 h-12 bg-red-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="security-card p-6 fade-in">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-gray-400">Policy Violations</p>
+                            <p class="text-2xl font-bold text-cyan-400">0</p>
+                            <p class="text-xs text-cyan-400">All compliant</p>
+                        </div>
+                        <div class="w-12 h-12 bg-cyan-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-6 h-6 text-cyan-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Security Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Live Security Events -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="security-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">Live Security Events</h3>
+                            <button class="text-cyan-400 hover:text-cyan-300 text-sm font-medium" onclick="refreshEvents()">
+                                Refresh
+                            </button>
+                        </div>
+                        
+                        <div class="space-y-4" id="security-events">
+                            <!-- Security events will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- eBPF Trace Visualization -->
+                    <div class="security-card p-6 fade-in">
+                        <div class="flex items-center justify-between mb-6">
+                            <h3 class="text-xl font-bold text-white">eBPF Kernel Traces</h3>
+                            <div class="flex space-x-2">
+                                <button class="px-3 py-1 text-xs bg-cyan-500/20 text-cyan-400 rounded-full" onclick="filterTraces('network')">Network</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full" onclick="filterTraces('file')">File</button>
+                                <button class="px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full" onclick="filterTraces('process')">Process</button>
+                            </div>
+                        </div>
+                        <div id="ebpf-chart" style="height: 300px;"></div>
+                    </div>
+                </div>
+                
+                <!-- Right Sidebar -->
+                <div class="space-y-6">
+                    <!-- Threat Intelligence -->
+                    <div class="security-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Threat Intelligence</h3>
+                        <div class="space-y-4" id="threat-intel">
+                            <!-- Threat intelligence will be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Zero-Trust Policies -->
+                    <div class="security-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Zero-Trust Policies</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between p-3 bg-green-900/20 rounded-lg">
+                                <span class="text-green-400">Multi-Factor Auth</span>
+                                <span class="status-dot status-secure"></span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-green-900/20 rounded-lg">
+                                <span class="text-green-400">Device Compliance</span>
+                                <span class="status-dot status-secure"></span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-green-900/20 rounded-lg">
+                                <span class="text-green-400">Network Segmentation</span>
+                                <span class="status-dot status-secure"></span>
+                            </div>
+                            <div class="flex items-center justify-between p-3 bg-yellow-900/20 rounded-lg">
+                                <span class="text-yellow-400">Data Encryption</span>
+                                <span class="status-dot status-warning"></span>
+                            </div>
+                        </div>
+                        <button class="w-full mt-4 bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition-colors" onclick="managePolicies()">
+                            Manage Policies
+                        </button>
+                    </div>
+                    
+                    <!-- Incident Response -->
+                    <div class="security-card p-6 fade-in">
+                        <h3 class="text-xl font-bold text-white mb-6">Incident Response</h3>
+                        <div class="space-y-4">
+                            <button class="w-full bg-red-500/20 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 hover:bg-red-500/30 transition-colors" onclick="blockIPAddress()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Block IP Address</span>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full bg-yellow-500/20 border border-yellow-500/30 rounded-lg px-4 py-3 text-yellow-400 hover:bg-yellow-500/30 transition-colors" onclick="quarantineService()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Quarantine Service</span>
+                                </div>
+                            </button>
+                            
+                            <button class="w-full bg-blue-500/20 border border-blue-500/30 rounded-lg px-4 py-3 text-blue-400 hover:bg-blue-500/30 transition-colors" onclick="generateReport()">
+                                <div class="flex items-center space-x-3">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"></path>
+                                    </svg>
+                                    <span>Generate Report</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        // Security Page JavaScript
+        document.addEventListener('DOMContentLoaded', function() {
+            initSecurity();
+            initCharts();
+            initSidebar();
+            populateSecurityEvents();
+            populateThreatIntel();
+        });
+        
+        function initSecurity() {
+            setTimeout(() => {
+                document.querySelectorAll('.fade-in').forEach((card, index) => {
+                    setTimeout(() => {
+                        card.classList.add('visible');
+                    }, index * 100);
+                });
+            }, 100);
+        }
+        
+        function initCharts() {
+            const chartDom = document.getElementById('ebpf-chart');
+            const myChart = echarts.init(chartDom);
+            
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(30, 58, 138, 0.9)',
+                    borderColor: 'rgba(8, 145, 178, 0.3)',
+                    textStyle: { color: '#F8FAFC' }
+                },
+                legend: {
+                    data: ['Network Events', 'File Access', 'Process Creation'],
+                    textStyle: { color: '#94A3B8' },
+                    top: 10
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    boundaryGap: false,
+                    data: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisLabel: { color: '#9CA3AF' },
+                    splitLine: { lineStyle: { color: '#374151' } }
+                },
+                series: [
+                    {
+                        name: 'Network Events',
+                        type: 'line',
+                        data: [1200, 1350, 1180, 1420, 1380, 1290, 1150],
+                        smooth: true,
+                        lineStyle: { color: '#06B6D4' },
+                        areaStyle: { color: 'rgba(6, 182, 212, 0.1)' }
+                    },
+                    {
+                        name: 'File Access',
+                        type: 'line',
+                        data: [800, 920, 780, 1050, 980, 890, 750],
+                        smooth: true,
+                        lineStyle: { color: '#10B981' },
+                        areaStyle: { color: 'rgba(16, 185, 129, 0.1)' }
+                    },
+                    {
+                        name: 'Process Creation',
+                        type: 'line',
+                        data: [450, 520, 380, 680, 590, 480, 420],
+                        smooth: true,
+                        lineStyle: { color: '#F59E0B' },
+                        areaStyle: { color: 'rgba(245, 158, 11, 0.1)' }
+                    }
+                ]
+            };
+            
+            myChart.setOption(option);
+            
+            window.addEventListener('resize', function() {
+                myChart.resize();
+            });
+        }
+        
+        function initSidebar() {
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const sidebarOverlay = document.getElementById('sidebar-overlay');
+            const sidebar = document.getElementById('sidebar');
+            
+            function toggleSidebar() {
+                sidebar.classList.toggle('active');
+                sidebarOverlay.classList.toggle('active');
+            }
+            
+            sidebarToggle.addEventListener('click', toggleSidebar);
+            mobileMenuBtn.addEventListener('click', toggleSidebar);
+            sidebarOverlay.addEventListener('click', toggleSidebar);
+            
+            window.addEventListener('resize', function() {
+                if (window.innerWidth >= 1024) {
+                    sidebar.classList.remove('active');
+                    sidebarOverlay.classList.remove('active');
+                }
+            });
+        }
+        
+        function populateSecurityEvents() {
+            const events = [
+                {
+                    type: 'suspicious-login',
+                    severity: 'warning',
+                    title: 'Suspicious Login Attempt',
+                    description: 'Multiple failed login attempts from IP 203.0.113.42',
+                    time: '2 minutes ago',
+                    status: 'investigating'
+                },
+                {
+                    type: 'policy-violation',
+                    severity: 'info',
+                    title: 'Policy Violation Detected',
+                    description: 'Container attempting to access host network namespace',
+                    time: '5 minutes ago',
+                    status: 'resolved'
+                },
+                {
+                    type: 'malware-detected',
+                    severity: 'critical',
+                    title: 'Malware Detected',
+                    description: 'Cryptocurrency mining software detected in container',
+                    time: '8 minutes ago',
+                    status: 'quarantined'
+                },
+                {
+                    type: 'privilege-escalation',
+                    severity: 'warning',
+                    title: 'Privilege Escalation Attempt',
+                    description: 'Process attempting to gain root privileges',
+                    time: '12 minutes ago',
+                    status: 'blocked'
+                }
+            ];
+            
+            const container = document.getElementById('security-events');
+            container.innerHTML = events.map(event => `
+                <div class="border-l-4 ${getEventBorderColor(event.severity)} bg-gray-800/30 p-4 rounded-r-lg">
+                    <div class="flex items-start space-x-3">
+                        <div class="flex-shrink-0">
+                            ${getEventIcon(event.severity)}
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-sm font-semibold text-white">${event.title}</h4>
+                                <span class="text-xs px-2 py-1 bg-gray-700 rounded-full text-gray-300">${event.status}</span>
+                            </div>
+                            <p class="text-sm text-gray-300 mt-1">${event.description}</p>
+                            <div class="flex items-center justify-between mt-2">
+                                <p class="text-xs text-gray-500">${event.time}</p>
+                                <div class="flex space-x-2">
+                                    <button class="text-xs text-cyan-400 hover:text-cyan-300" onclick="investigateEvent('${event.type}')">Investigate</button>
+                                    <button class="text-xs text-red-400 hover:text-red-300" onclick="respondToEvent('${event.type}')">Respond</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function populateThreatIntel() {
+            const threats = [
+                {
+                    type: 'IP Reputation',
+                    indicator: '185.220.101.42',
+                    risk: 'High',
+                    category: 'Known Botnet'
+                },
+                {
+                    type: 'Domain',
+                    indicator: 'malicious-domain.com',
+                    risk: 'Medium',
+                    category: 'Phishing'
+                },
+                {
+                    type: 'Hash',
+                    indicator: 'd41d8cd98f00b204e980...',
+                    risk: 'High',
+                    category: 'Malware'
+                }
+            ];
+            
+            const container = document.getElementById('threat-intel');
+            container.innerHTML = threats.map(threat => `
+                <div class="bg-gray-800/30 p-3 rounded-lg">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-white">${threat.type}</span>
+                        <span class="text-xs px-2 py-1 ${getRiskColor(threat.risk)} rounded-full">${threat.risk}</span>
+                    </div>
+                    <p class="text-xs text-gray-400 font-mono mb-1">${threat.indicator}</p>
+                    <p class="text-xs text-gray-500">${threat.category}</p>
+                </div>
+            `).join('');
+        }
+        
+        function getEventBorderColor(severity) {
+            const colors = {
+                critical: 'border-red-400',
+                warning: 'border-yellow-400',
+                info: 'border-blue-400'
+            };
+            return colors[severity] || 'border-gray-400';
+        }
+        
+        function getEventIcon(severity) {
+            const icons = {
+                critical: '<svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>',
+                warning: '<svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>',
+                info: '<svg class="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[severity] || icons.info;
+        }
+        
+        function getRiskColor(risk) {
+            const colors = {
+                High: 'bg-red-500/20 text-red-400',
+                Medium: 'bg-yellow-500/20 text-yellow-400',
+                Low: 'bg-green-500/20 text-green-400'
+            };
+            return colors[risk] || 'bg-gray-500/20 text-gray-400';
+        }
+        
+        // Interactive Functions
+        function investigateEvent(eventType) {
+            showNotification(`Investigating ${eventType} event...`, 'info');
+        }
+        
+        function respondToEvent(eventType) {
+            showNotification(`Responding to ${eventType} event...`, 'info');
+        }
+        
+        function filterTraces(type) {
+            const buttons = document.querySelectorAll('[onclick^="filterTraces"]');
+            buttons.forEach(btn => {
+                btn.className = 'px-3 py-1 text-xs bg-gray-700 text-gray-400 rounded-full';
+            });
+            
+            event.target.className = 'px-3 py-1 text-xs bg-cyan-500/20 text-cyan-400 rounded-full';
+            
+            showNotification(`Filtering eBPF traces by ${type}`, 'info');
+        }
+        
+        function managePolicies() {
+            showNotification('Opening zero-trust policy management...', 'info');
+        }
+        
+        function blockIPAddress() {
+            showNotification('Blocking suspicious IP address...', 'warning');
+        }
+        
+        function quarantineService() {
+            showNotification('Quarantining affected service...', 'warning');
+        }
+        
+        function generateReport() {
+            showNotification('Generating security incident report...', 'info');
+            setTimeout(() => {
+                showNotification('Security report generated successfully', 'success');
+            }, 2000);
+        }
+        
+        function refreshEvents() {
+            showNotification('Refreshing security events...', 'info');
+            setTimeout(() => {
+                populateSecurityEvents();
+                showNotification('Security events refreshed', 'success');
+            }, 1500);
+        }
+        
+        function emergencyResponse() {
+            showNotification('EMERGENCY: Initiating incident response protocol...', 'error');
+        }
+        
+        function runSecurityScan() {
+            showNotification('Running comprehensive security scan...', 'info');
+            setTimeout(() => {
+                showNotification('Security scan completed successfully', 'success');
+            }, 3000);
+        }
+        
+        function showUserMenu() {
+            showNotification('User menu would be displayed here', 'info');
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg glass max-w-sm transform translate-x-full transition-transform duration-300`;
+            
+            const colors = {
+                success: 'border-green-400 text-green-400',
+                error: 'border-red-400 text-red-400',
+                warning: 'border-yellow-400 text-yellow-400',
+                info: 'border-cyan-400 text-cyan-400'
+            };
+            
+            notification.classList.add(colors[type] || colors.info);
+            notification.innerHTML = `
+                <div class="flex items-center space-x-3">
+                    <div class="flex-shrink-0">
+                        ${getNotificationIcon(type)}
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-medium">${message}</p>
+                    </div>
+                    <button class="flex-shrink-0 text-gray-400 hover:text-white" onclick="this.parentElement.parentElement.remove()">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateX(0)';
+            }, 100);
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateX(full)';
+                setTimeout(() => {
+                    if (notification.parentElement) {
+                        notification.remove();
+                    }
+                }, 300);
+            }, 5000);
+        }
+        
+        function getNotificationIcon(type) {
+            const icons = {
+                success: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>',
+                error: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path></svg>',
+                warning: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0a1.532 1.532 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"></path></svg>',
+                info: '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>'
+            };
+            return icons[type] || icons.info;
+        }
+        
+        console.log('%c🔒 VividP Security - eBPF-Based Observability', 'color: #06B6D4; font-size: 16px; font-weight: bold;');
+        console.log('%cZero-trust security with real-time threat detection', 'color: #F8FAFC; font-size: 12px;');
+        console.log('%cYour infrastructure is continuously monitored', 'color: #94A3B8; font-size: 12px;');
+    </script>
+</body>
+</html>
