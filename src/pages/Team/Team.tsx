@@ -1,30 +1,28 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import Header from '../../components/Layout/Header';
 import { LayoutContextType } from '../../components/Layout/MainLayout';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface TeamMember {
     id: string;
-    email: string;
-    name: string;
-    role: 'admin' | 'developer' | 'viewer';
-    status: 'active' | 'pending' | 'inactive';
-    joinedAt: Date;
-    lastActive: Date | null;
-    avatar?: string;
+    member_email: string;
+    role: string;
+    status: string;
+    invited_at: string;
 }
 
-const roleColors = {
-    admin: 'from-red-500 to-orange-500',
-    developer: 'from-cyan-500 to-blue-500',
-    viewer: 'from-gray-500 to-gray-600'
+const roleColors: Record<string, string> = {
+    'Admin': 'from-red-500 to-orange-500',
+    'Developer': 'from-cyan-500 to-blue-500',
+    'Viewer': 'from-gray-500 to-gray-600'
 };
 
-const rolePermissions = {
-    admin: ['Full access', 'Manage team', 'Billing', 'Delete resources', 'API keys'],
-    developer: ['Deploy', 'Scale', 'View logs', 'Restart pods', 'Create services'],
-    viewer: ['View deployments', 'View logs', 'View metrics']
+const rolePermissions: Record<string, string[]> = {
+    'Admin': ['Full access', 'Manage team', 'Billing', 'Delete resources', 'API keys'],
+    'Developer': ['Deploy', 'Scale', 'View logs', 'Restart pods', 'Create services'],
+    'Viewer': ['View deployments', 'View logs', 'View metrics']
 };
 
 const Team = () => {
@@ -32,69 +30,109 @@ const Team = () => {
     const { user } = useAuth();
     const [isInviting, setIsInviting] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
-    const [inviteRole, setInviteRole] = useState<'developer' | 'viewer'>('developer');
+    const [inviteRole, setInviteRole] = useState('Developer');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [members, setMembers] = useState<TeamMember[]>([]);
 
-    const [members, setMembers] = useState<TeamMember[]>([
-        {
-            id: '1',
-            email: user?.email || 'owner@example.com',
-            name: user?.user_metadata?.full_name || 'Team Owner',
-            role: 'admin',
-            status: 'active',
-            joinedAt: new Date('2024-01-01'),
-            lastActive: new Date()
-        },
-        {
-            id: '2',
-            email: 'dev@example.com',
-            name: 'John Developer',
-            role: 'developer',
-            status: 'active',
-            joinedAt: new Date('2024-06-15'),
-            lastActive: new Date('2024-12-18')
-        },
-        {
-            id: '3',
-            email: 'viewer@example.com',
-            name: 'Sarah Viewer',
-            role: 'viewer',
-            status: 'pending',
-            joinedAt: new Date('2024-12-01'),
-            lastActive: null
+    // Fetch team from Supabase
+    const fetchTeam = async () => {
+        if (!user) return;
+
+        try {
+            const { data, error: fetchError } = await supabase
+                .from('team_members')
+                .select('*')
+                .eq('owner_id', user.id)
+                .order('invited_at', { ascending: false });
+
+            if (fetchError) throw fetchError;
+
+            // Add the owner as first member
+            const ownerMember: TeamMember = {
+                id: 'owner',
+                member_email: user.email || '',
+                role: 'Admin',
+                status: 'Active',
+                invited_at: user.created_at || new Date().toISOString()
+            };
+
+            setMembers([ownerMember, ...(data || [])]);
+            setError(null);
+        } catch (err: any) {
+            console.error('Error fetching team:', err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
         }
-    ]);
-
-    const inviteMember = () => {
-        if (!inviteEmail) return;
-
-        const newMember: TeamMember = {
-            id: Date.now().toString(),
-            email: inviteEmail,
-            name: inviteEmail.split('@')[0],
-            role: inviteRole,
-            status: 'pending',
-            joinedAt: new Date(),
-            lastActive: null
-        };
-
-        setMembers(m => [...m, newMember]);
-        setInviteEmail('');
-        setIsInviting(false);
     };
 
-    const removeMember = (id: string) => {
-        setMembers(m => m.filter(member => member.id !== id));
+    useEffect(() => {
+        fetchTeam();
+    }, [user]);
+
+    const inviteMember = async () => {
+        if (!inviteEmail || !user) return;
+
+        try {
+            const { error: insertError } = await supabase
+                .from('team_members')
+                .insert({
+                    owner_id: user.id,
+                    member_email: inviteEmail,
+                    role: inviteRole,
+                    status: 'Pending'
+                });
+
+            if (insertError) throw insertError;
+
+            fetchTeam();
+            setInviteEmail('');
+            setIsInviting(false);
+        } catch (err: any) {
+            alert(err.message);
+        }
     };
 
-    const changeRole = (id: string, newRole: 'admin' | 'developer' | 'viewer') => {
-        setMembers(m => m.map(member =>
-            member.id === id ? { ...member, role: newRole } : member
-        ));
+    const removeMember = async (id: string) => {
+        if (id === 'owner') return;
+        if (!window.confirm('Are you sure you want to remove this member?')) return;
+
+        try {
+            const { error: deleteError } = await supabase
+                .from('team_members')
+                .delete()
+                .eq('id', id);
+
+            if (deleteError) throw deleteError;
+            fetchTeam();
+        } catch (err: any) {
+            alert(err.message);
+        }
     };
 
-    const formatDate = (date: Date | null) => {
-        if (!date) return 'Never';
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const changeRole = async (id: string, newRole: string) => {
+        if (id === 'owner') return;
+
+        try {
+            const { error: updateError } = await supabase
+                .from('team_members')
+                .update({ role: newRole })
+                .eq('id', id);
+
+            if (updateError) throw updateError;
+            fetchTeam();
+        } catch (err: any) {
+            alert(err.message);
+        }
+    };
+
+    const formatDate = (dateStr: string) => {
+        return new Date(dateStr).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
     };
 
     return (
@@ -109,17 +147,25 @@ const Team = () => {
             </Header>
 
             <div className="space-y-6">
+                {error && (
+                    <div className="bg-red-500/20 border border-red-500/50 text-red-500 p-4 rounded-xl flex items-center gap-3">
+                        <span>⚠️</span>
+                        <p>{error}</p>
+                        <button onClick={fetchTeam} className="ml-auto underline hover:no-underline">Retry</button>
+                    </div>
+                )}
+
                 {/* Role Legend */}
                 <div className="glass p-4 rounded-xl">
                     <h4 className="text-sm font-semibold text-gray-400 mb-3">Role Permissions</h4>
                     <div className="grid md:grid-cols-3 gap-4">
-                        {(['admin', 'developer', 'viewer'] as const).map(role => (
+                        {['Admin', 'Developer', 'Viewer'].map(role => (
                             <div key={role} className="p-3 bg-white/5 rounded-lg">
                                 <div className={`inline-flex px-2 py-1 rounded text-xs font-bold bg-gradient-to-r ${roleColors[role]} mb-2 capitalize`}>
                                     {role}
                                 </div>
                                 <ul className="space-y-1">
-                                    {rolePermissions[role].map((perm, i) => (
+                                    {(rolePermissions[role] || []).map((perm, i) => (
                                         <li key={i} className="text-xs text-gray-400 flex items-center gap-1">
                                             <span className="text-green-400">✓</span> {perm}
                                         </li>
@@ -137,48 +183,51 @@ const Team = () => {
                     </div>
 
                     <div className="divide-y divide-white/5">
-                        {members.map(member => (
+                        {loading ? (
+                            <div className="p-12 text-center text-gray-500">
+                                <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                                Loading team...
+                            </div>
+                        ) : members.length === 0 ? (
+                            <div className="p-12 text-center text-gray-500">No members found.</div>
+                        ) : members.map(member => (
                             <div key={member.id} className="p-4 flex items-center gap-4 hover:bg-white/5 transition-colors">
-                                {/* Avatar */}
-                                <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${roleColors[member.role]} flex items-center justify-center font-bold text-lg`}>
-                                    {member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${roleColors[member.role] || 'from-gray-500 to-gray-600'} flex items-center justify-center font-bold text-lg text-white`}>
+                                    {member.member_email[0].toUpperCase()}
                                 </div>
 
-                                {/* Info */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className="font-medium truncate">{member.name}</span>
-                                        {member.status === 'pending' && (
+                                        <span className="font-medium truncate text-white">{member.member_email}</span>
+                                        {member.status === 'Pending' && (
                                             <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 rounded text-xs">
                                                 Pending
                                             </span>
                                         )}
-                                        {member.id === '1' && (
+                                        {member.id === 'owner' && (
                                             <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-xs">
                                                 Owner
                                             </span>
                                         )}
                                     </div>
-                                    <div className="text-sm text-gray-400 truncate">{member.email}</div>
                                     <div className="text-xs text-gray-500 mt-1">
-                                        Joined {formatDate(member.joinedAt)} • Last active {formatDate(member.lastActive)}
+                                        {member.id === 'owner' ? 'Account owner' : `Invited ${formatDate(member.invited_at)}`}
                                     </div>
                                 </div>
 
-                                {/* Role Selector */}
                                 <div className="flex items-center gap-3">
                                     <select
                                         value={member.role}
-                                        onChange={e => changeRole(member.id, e.target.value as any)}
-                                        disabled={member.id === '1'}
-                                        className="bg-black/40 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-cyan-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                        onChange={e => changeRole(member.id, e.target.value)}
+                                        disabled={member.id === 'owner'}
+                                        className="bg-black/40 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 outline-none disabled:opacity-50"
                                     >
-                                        <option value="admin">Admin</option>
-                                        <option value="developer">Developer</option>
-                                        <option value="viewer">Viewer</option>
+                                        <option value="Admin">Admin</option>
+                                        <option value="Developer">Developer</option>
+                                        <option value="Viewer">Viewer</option>
                                     </select>
 
-                                    {member.id !== '1' && (
+                                    {member.id !== 'owner' && (
                                         <button
                                             onClick={() => removeMember(member.id)}
                                             className="p-2 hover:bg-red-500/20 rounded text-red-400"
@@ -192,34 +241,6 @@ const Team = () => {
                         ))}
                     </div>
                 </div>
-
-                {/* Pending Invites */}
-                {members.some(m => m.status === 'pending') && (
-                    <div className="glass p-6 rounded-xl">
-                        <h4 className="font-semibold mb-4">Pending Invites</h4>
-                        <div className="space-y-2">
-                            {members.filter(m => m.status === 'pending').map(m => (
-                                <div key={m.id} className="flex items-center justify-between p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-                                    <div>
-                                        <span className="text-yellow-400">{m.email}</span>
-                                        <span className="text-gray-400 text-sm ml-2">as {m.role}</span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button className="px-3 py-1 bg-white/10 rounded text-sm hover:bg-white/20">
-                                            Resend
-                                        </button>
-                                        <button
-                                            onClick={() => removeMember(m.id)}
-                                            className="px-3 py-1 bg-red-500/20 text-red-400 rounded text-sm hover:bg-red-500/30"
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
 
             {/* Invite Modal */}
@@ -245,20 +266,20 @@ const Team = () => {
                             <div>
                                 <label className="block text-sm text-gray-400 mb-2">Role</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {(['developer', 'viewer'] as const).map(role => (
+                                    {['Developer', 'Viewer'].map(role => (
                                         <button
                                             key={role}
                                             onClick={() => setInviteRole(role)}
                                             className={`p-3 rounded-lg text-left transition-all border ${inviteRole === role
-                                                    ? 'bg-cyan-500/20 border-cyan-500/50'
-                                                    : 'bg-white/5 border-transparent hover:border-white/10'
+                                                ? 'bg-cyan-500/20 border-cyan-500/50'
+                                                : 'bg-white/5 border-transparent hover:border-white/10'
                                                 }`}
                                         >
                                             <div className={`text-sm font-medium capitalize bg-gradient-to-r ${roleColors[role]} bg-clip-text text-transparent`}>
                                                 {role}
                                             </div>
                                             <div className="text-xs text-gray-500 mt-1">
-                                                {role === 'developer' ? 'Can deploy & manage' : 'View only access'}
+                                                {role === 'Developer' ? 'Can deploy & manage' : 'View only access'}
                                             </div>
                                         </button>
                                     ))}
@@ -283,14 +304,6 @@ const Team = () => {
                     </div>
                 </div>
             )}
-
-            <style>{`
-                @keyframes scale-in {
-                    from { transform: scale(0.95); opacity: 0; }
-                    to { transform: scale(1); opacity: 1; }
-                }
-                .animate-scale-in { animation: scale-in 0.2s ease-out; }
-            `}</style>
         </>
     );
 };

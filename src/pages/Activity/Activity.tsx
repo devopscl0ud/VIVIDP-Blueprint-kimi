@@ -3,67 +3,72 @@ import { useOutletContext } from 'react-router-dom';
 import Header from '../../components/Layout/Header';
 import { LayoutContextType } from '../../components/Layout/MainLayout';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface ActivityItem {
     id: string;
-    type: 'deploy' | 'delete' | 'scale' | 'login' | 'settings' | 'create';
+    type: 'deploy' | 'delete' | 'scale' | 'login' | 'settings' | 'create' | 'restart';
     action: string;
     resource?: string;
-    timestamp: Date;
+    created_at: string;
     status: 'success' | 'error' | 'pending';
     details?: string;
 }
 
 const Activity = () => {
     const { sidebarOpen, setSidebarOpen } = useOutletContext<LayoutContextType>();
-    const { user, session } = useAuth();
+    const { user } = useAuth();
     const [activities, setActivities] = useState<ActivityItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<string>('all');
 
-    // Get auth headers
-    const getAuthHeaders = () => ({
-        'Content-Type': 'application/json',
-        'Authorization': session?.access_token ? `Bearer ${session.access_token}` : ''
-    });
-
-    // Generate activity based on deployments
+    // Fetch activity from Supabase
     useEffect(() => {
         const fetchActivity = async () => {
+            if (!user) {
+                setLoading(false);
+                return;
+            }
+
             try {
-                const res = await fetch('/api/deployments', { headers: getAuthHeaders() });
-                if (res.ok) {
-                    const data = await res.json();
-                    const deploymentActivities: ActivityItem[] = (data.deployments || []).map((d: any, i: number) => ({
-                        id: `deploy-${i}`,
-                        type: 'deploy' as const,
-                        action: `Deployed ${d.name}`,
-                        resource: d.name,
-                        timestamp: new Date(d.createdAt),
-                        status: d.status === 'Running' ? 'success' : 'pending',
-                        details: `Image: ${d.image}`
-                    }));
+                const { data, error } = await supabase
+                    .from('activity_logs')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
-                    // Add login activity
-                    const loginActivity: ActivityItem = {
-                        id: 'login-0',
-                        type: 'login',
-                        action: 'Signed in',
-                        timestamp: new Date(user?.last_sign_in_at || Date.now()),
-                        status: 'success',
-                        details: user?.email
-                    };
+                if (error) throw error;
 
-                    setActivities([loginActivity, ...deploymentActivities].slice(0, 20));
+                if (data && data.length > 0) {
+                    setActivities(data);
+                } else {
+                    // Log initial login activity if no activity exists
+                    const { data: newActivity } = await supabase
+                        .from('activity_logs')
+                        .insert({
+                            user_id: user.id,
+                            type: 'login',
+                            action: 'Signed in',
+                            details: user.email,
+                            status: 'success'
+                        })
+                        .select()
+                        .single();
+
+                    if (newActivity) {
+                        setActivities([newActivity]);
+                    }
                 }
-            } catch (e) {
-                console.error(e);
+            } catch (err) {
+                console.error('Error fetching activity:', err);
             } finally {
                 setLoading(false);
             }
         };
+
         fetchActivity();
-    }, [session]);
+    }, [user]);
 
     const getIcon = (type: string) => {
         switch (type) {
@@ -73,6 +78,7 @@ const Activity = () => {
             case 'login': return '🔐';
             case 'settings': return '⚙️';
             case 'create': return '➕';
+            case 'restart': return '🔄';
             default: return '📋';
         }
     };
@@ -86,7 +92,8 @@ const Activity = () => {
         }
     };
 
-    const formatTime = (date: Date) => {
+    const formatTime = (dateStr: string) => {
+        const date = new Date(dateStr);
         const now = new Date();
         const diff = now.getTime() - date.getTime();
         const minutes = Math.floor(diff / 60000);
@@ -114,7 +121,8 @@ const Activity = () => {
                     <option value="all">All Activity</option>
                     <option value="deploy">Deployments</option>
                     <option value="login">Logins</option>
-                    <option value="delete">Deletions</option>
+                    <option value="scale">Scaling</option>
+                    <option value="create">Creations</option>
                     <option value="settings">Settings</option>
                 </select>
             </Header>
@@ -126,7 +134,7 @@ const Activity = () => {
                         { label: 'Total Actions', value: activities.length, icon: '📊', color: 'cyan' },
                         { label: 'Deployments', value: activities.filter(a => a.type === 'deploy').length, icon: '🚀', color: 'green' },
                         { label: 'Success Rate', value: `${Math.round((activities.filter(a => a.status === 'success').length / (activities.length || 1)) * 100)}%`, icon: '✅', color: 'blue' },
-                        { label: 'Today', value: activities.filter(a => a.timestamp.toDateString() === new Date().toDateString()).length, icon: '📅', color: 'purple' }
+                        { label: 'Today', value: activities.filter(a => new Date(a.created_at).toDateString() === new Date().toDateString()).length, icon: '📅', color: 'purple' }
                     ].map((stat, i) => (
                         <div key={i} className="glass p-4 rounded-xl border border-white/10">
                             <div className="flex items-center justify-between">
@@ -175,7 +183,7 @@ const Activity = () => {
                                         )}
                                     </div>
                                     <div className="text-sm text-gray-500 whitespace-nowrap">
-                                        {formatTime(activity.timestamp)}
+                                        {formatTime(activity.created_at)}
                                     </div>
                                 </div>
                             ))}
@@ -188,3 +196,26 @@ const Activity = () => {
 };
 
 export default Activity;
+
+// Helper function to log activity (can be imported by other components)
+export const logActivity = async (
+    userId: string,
+    type: ActivityItem['type'],
+    action: string,
+    resource?: string,
+    details?: string,
+    status: ActivityItem['status'] = 'success'
+) => {
+    try {
+        await supabase.from('activity_logs').insert({
+            user_id: userId,
+            type,
+            action,
+            resource,
+            details,
+            status
+        });
+    } catch (err) {
+        console.error('Failed to log activity:', err);
+    }
+};

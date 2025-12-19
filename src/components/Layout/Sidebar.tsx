@@ -25,7 +25,6 @@ const Sidebar = ({ open, onClose }: SidebarProps) => {
 
     const bottomNavItems = [
         { path: '/api-keys', label: 'API Keys', icon: '🔑' },
-        { path: '/cli', label: 'CLI Tool', icon: '⌨️' },
         { path: '/billing', label: 'Billing', icon: '💳' },
         { path: '/settings', label: 'Settings', icon: '⚙️' },
         { path: '/help', label: 'Help', icon: '❓' },

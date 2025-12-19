@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
 
 interface LogLine {
     timestamp: string | null;
@@ -6,17 +7,67 @@ interface LogLine {
 }
 
 interface LogViewerProps {
-    logs: LogLine[];
-    loading?: boolean;
     podName?: string;
-    onRefresh?: () => void;
+    namespace?: string;
     onClose?: () => void;
 }
 
-const LogViewer = ({ logs, loading = false, podName, onRefresh, onClose }: LogViewerProps) => {
+const LogViewer = ({ podName, namespace, onClose }: LogViewerProps) => {
+    const [logs, setLogs] = useState<LogLine[]>([]);
+    const [loading, setLoading] = useState(true);
     const [autoScroll, setAutoScroll] = useState(true);
     const [filter, setFilter] = useState('');
+    const [connected, setConnected] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const socketRef = useRef<Socket | null>(null);
+
+    useEffect(() => {
+        if (!podName || !namespace) return;
+
+        setLoading(true);
+        setLogs([]);
+
+        // Initialize socket connection
+        const socket = io('http://localhost:3001');
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            console.log('Connected to log server');
+            setConnected(true);
+            socket.emit('watch-logs', { namespace, podName });
+            setLoading(false);
+        });
+
+        socket.on('log-data', (data: string) => {
+            const lines = data.split('\n').filter(l => l.trim() !== '');
+            const newLogs = lines.map(line => {
+                const match = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\S+)\s(.*)$/);
+                if (match) {
+                    return { timestamp: match[1], message: match[2] };
+                }
+                return { timestamp: null, message: line };
+            });
+
+            setLogs(prev => [...prev.slice(-999), ...newLogs]); // Keep last 1000 lines
+        });
+
+        socket.on('log-error', (error: string) => {
+            console.error('Log error:', error);
+            setLogs(prev => [...prev, { timestamp: new Date().toISOString(), message: `ERROR: ${error}` }]);
+            setLoading(false);
+        });
+
+        socket.on('disconnect', () => {
+            setConnected(false);
+        });
+
+        return () => {
+            if (socketRef.current) {
+                socketRef.current.emit('stop-logs');
+                socketRef.current.disconnect();
+            }
+        };
+    }, [podName, namespace]);
 
     useEffect(() => {
         if (autoScroll && containerRef.current) {
@@ -67,7 +118,11 @@ const LogViewer = ({ logs, loading = false, podName, onRefresh, onClose }: LogVi
                 <div className="flex items-center gap-3">
                     <span className="text-lg">📜</span>
                     <div>
-                        <h3 className="font-semibold text-white">Pod Logs</h3>
+                        <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-white">Pod Logs</h3>
+                            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                            <span className="text-[10px] text-gray-500 uppercase tracking-widest">{connected ? 'Live' : 'Offline'}</span>
+                        </div>
                         {podName && <p className="text-xs text-gray-400 font-mono">{podName}</p>}
                     </div>
                 </div>
@@ -79,14 +134,6 @@ const LogViewer = ({ logs, loading = false, podName, onRefresh, onClose }: LogVi
                     >
                         Auto-scroll {autoScroll ? 'ON' : 'OFF'}
                     </button>
-                    {onRefresh && (
-                        <button
-                            onClick={onRefresh}
-                            className="px-2 py-1 rounded text-xs bg-gray-700 text-gray-300 hover:bg-gray-600"
-                        >
-                            ↻ Refresh
-                        </button>
-                    )}
                     {onClose && (
                         <button
                             onClick={onClose}
@@ -117,18 +164,18 @@ const LogViewer = ({ logs, loading = false, podName, onRefresh, onClose }: LogVi
                 {loading ? (
                     <div className="flex items-center justify-center h-full text-gray-500">
                         <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mr-2"></div>
-                        Loading logs...
+                        Connecting to stream...
                     </div>
                 ) : filteredLogs.length === 0 ? (
                     <div className="flex items-center justify-center h-full text-gray-500">
-                        {filter ? 'No logs match your filter' : 'No logs available'}
+                        {filter ? 'No logs match your filter' : 'Waiting for logs...'}
                     </div>
                 ) : (
                     filteredLogs.map((log, i) => (
                         <div key={i} className="flex gap-2 hover:bg-white/5 py-0.5 px-1 rounded">
                             {log.timestamp && (
                                 <span className="text-gray-600 shrink-0">
-                                    {formatTimestamp(log.timestamp)}
+                                    [{formatTimestamp(log.timestamp)}]
                                 </span>
                             )}
                             <span className={getLogColor(log.message)}>
@@ -142,7 +189,10 @@ const LogViewer = ({ logs, loading = false, podName, onRefresh, onClose }: LogVi
             {/* Footer */}
             <div className="bg-gray-900/80 border-t border-white/10 px-3 py-2 text-xs text-gray-500 flex justify-between">
                 <span>{filteredLogs.length} lines</span>
-                <span>Last 100 lines shown</span>
+                <span className="flex items-center gap-1">
+                    <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                    {connected ? 'WebSocket Connected' : 'Disconnected'}
+                </span>
             </div>
         </div>
     );

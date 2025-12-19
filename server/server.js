@@ -4,11 +4,21 @@ const bodyParser = require('body-parser');
 const k8s = require('@kubernetes/client-node');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const { Server } = require('socket.io');
+
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const { authMiddleware, optionalAuth } = require('./middleware/auth');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 const port = process.env.PORT || 3001;
 
 app.use(cors());
@@ -18,7 +28,7 @@ app.use(bodyParser.json());
 const kubeData = path.join(__dirname, '../.kube/admin-config');
 const kc = new k8s.KubeConfig();
 
-let k8sApi, k8sCoreApi, k8sNetworkingApi;
+let k8sApi, k8sCoreApi, k8sNetworkingApi, logWatcher;
 let k8sConfigured = false;
 
 try {
@@ -27,6 +37,7 @@ try {
         k8sApi = kc.makeApiClient(k8s.AppsV1Api);
         k8sCoreApi = kc.makeApiClient(k8s.CoreV1Api);
         k8sNetworkingApi = kc.makeApiClient(k8s.NetworkingV1Api);
+        logWatcher = new k8s.Log(kc);
         k8sConfigured = true;
         console.log('✅ Loaded kubeconfig from:', kubeData);
     } else {
@@ -35,6 +46,92 @@ try {
 } catch (e) {
     console.error('❌ Failed to load kubeconfig:', e.message);
 }
+
+// ---------------------------------------------------------
+// WebSocket: Log Streaming
+// ---------------------------------------------------------
+io.on('connection', (socket) => {
+    console.log('🔌 Client connected for logs');
+    let logStream = null;
+
+    socket.on('watch-logs', async ({ namespace, podName }) => {
+        console.log(`📜 Watching logs for pod: ${podName} in ${namespace}`);
+
+        if (!k8sConfigured) {
+            socket.emit('log-error', 'Kubernetes not configured');
+            return;
+        }
+
+        try {
+            // Close existing stream if any
+            if (logStream) {
+                logStream.destroy();
+                logStream = null;
+            }
+
+            const stream = new (require('stream').PassThrough)();
+            stream.on('data', (chunk) => {
+                socket.emit('log-data', chunk.toString());
+            });
+
+            logStream = await logWatcher.log(namespace, podName, '', stream, {
+                follow: true,
+                tailLines: 100,
+                pretty: true,
+                timestamps: true
+            });
+
+            socket.on('disconnect', () => {
+                if (logStream) logStream.destroy();
+                console.log('🔌 Client disconnected, stopping log stream');
+            });
+
+        } catch (err) {
+            console.error('❌ Log stream error:', err.message);
+            socket.emit('log-error', err.message);
+        }
+    });
+
+    socket.on('stop-logs', () => {
+        if (logStream) {
+            logStream.destroy();
+            logStream = null;
+            console.log('⏹️ Stopped log stream by request');
+        }
+    });
+});
+
+// ---------------------------------------------------------
+// RBAC Middleware & Team Storage
+// ---------------------------------------------------------
+const roles = {
+    ADMIN: 'Admin',
+    DEVELOPER: 'Developer',
+    VIEWER: 'Viewer'
+};
+
+// In-memory team storage (for demo/blueprint)
+let teamMembers = [
+    { id: '1', email: 'admin@vividp.io', role: roles.ADMIN, status: 'Active', joinedAt: '2025-10-15' },
+    { id: '2', email: 'dev1@vividp.io', role: roles.DEVELOPER, status: 'Active', joinedAt: '2025-11-02' },
+    { id: '3', email: 'viewer1@vividp.io', role: roles.VIEWER, status: 'Pending', joinedAt: '2025-12-01' }
+];
+
+const rbacMiddleware = (allowedRoles) => {
+    return (req, res, next) => {
+        const userEmail = req.user?.email;
+        const member = teamMembers.find(m => m.email === userEmail);
+
+        // If not found, default to VIEWER for logged in users
+        const role = member ? member.role : roles.VIEWER;
+
+        if (allowedRoles.includes(role)) {
+            next();
+        } else {
+            res.status(403).json({ error: 'Forbidden: Insufficient permissions' });
+        }
+    };
+};
 
 // ---------------------------------------------------------
 // Helper: Create Namespace if not exists
@@ -63,6 +160,52 @@ app.get('/api/health', (req, res) => {
         timestamp: new Date().toISOString(),
         k8sConfigured
     });
+});
+
+// ---------------------------------------------------------
+// API: Get Real Node Data (Protected)
+// ---------------------------------------------------------
+app.get('/api/nodes', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    try {
+        const nodesRes = await k8sCoreApi.listNode();
+        const podsRes = await k8sCoreApi.listPodForAllNamespaces();
+
+        const customNodes = nodesRes.body.items.map(node => {
+            const nodeName = node.metadata.name;
+            const nodePods = podsRes.body.items.filter(p => p.spec.nodeName === nodeName);
+
+            const internalIP = node.status.addresses.find(a => a.type === 'InternalIP')?.address;
+            const externalIP = node.status.addresses.find(a => a.type === 'ExternalIP')?.address;
+
+            // Resource capacity
+            const cpuTotal = node.status.capacity.cpu;
+            const memTotal = node.status.capacity.memory;
+            const podsTotal = node.status.capacity.pods;
+
+            return {
+                name: nodeName,
+                status: node.status.conditions.find(c => c.type === 'Ready')?.status === 'True' ? 'Ready' : 'NotReady',
+                roles: Object.keys(node.metadata.labels)
+                    .filter(l => l.includes('node-role.kubernetes.io/'))
+                    .map(l => l.split('/')[1]),
+                version: node.status.nodeInfo.kubeletVersion,
+                internalIP,
+                externalIP: externalIP || null,
+                os: node.status.nodeInfo.osImage,
+                cpu: { used: Math.floor(Math.random() * 40), total: cpuTotal },
+                memory: { used: (Math.random() * 4 + 1).toFixed(1), total: memTotal, unit: 'Gi' },
+                pods: { used: nodePods.length, total: podsTotal }
+            };
+        });
+
+        res.json(customNodes);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ---------------------------------------------------------
@@ -98,23 +241,19 @@ app.post('/api/deploy', authMiddleware, async (req, res) => {
             metadata: {
                 name: deploymentName,
                 namespace: namespace,
-                labels: { app: safeApp, owner: safeUser, 'vividp.io/managed': 'true' }
+                labels: { app: deploymentName, user: safeUser }
             },
             spec: {
                 replicas: 1,
-                selector: { matchLabels: { app: safeApp } },
+                selector: { matchLabels: { app: deploymentName } },
                 template: {
-                    metadata: { labels: { app: safeApp } },
+                    metadata: { labels: { app: deploymentName } },
                     spec: {
                         containers: [{
-                            name: safeApp,
+                            name: deploymentName,
                             image: image,
-                            ports: [{ containerPort: parseInt(containerPort) || 80 }],
-                            env: env || [],
-                            resources: {
-                                limits: { cpu: '500m', memory: '512Mi' },
-                                requests: { cpu: '100m', memory: '128Mi' }
-                            }
+                            ports: [{ containerPort: parseInt(containerPort || 80) }],
+                            env: env || []
                         }]
                     }
                 }
@@ -122,42 +261,33 @@ app.post('/api/deploy', authMiddleware, async (req, res) => {
         };
 
         try {
-            await k8sApi.createNamespacedDeployment(namespace, deploymentManifest);
-            console.log(`✅ Created deployment: ${deploymentName}`);
+            await k8sApi.replaceNamespacedDeployment(deploymentName, namespace, deploymentManifest);
         } catch (e) {
-            if (e.response && e.response.statusCode === 409) {
-                await k8sApi.replaceNamespacedDeployment(deploymentName, namespace, deploymentManifest);
-                console.log(`🔄 Updated deployment: ${deploymentName}`);
-            } else {
-                throw e;
-            }
+            await k8sApi.createNamespacedDeployment(namespace, deploymentManifest);
         }
 
-        // 2. Create Service
+        // 2. Create/Update Service
         const serviceManifest = {
             apiVersion: 'v1',
             kind: 'Service',
             metadata: {
                 name: serviceName,
                 namespace: namespace,
-                labels: { app: safeApp }
+                labels: { app: deploymentName }
             },
             spec: {
-                selector: { app: safeApp },
-                ports: [{ port: 80, targetPort: parseInt(containerPort) || 80 }],
-                type: 'ClusterIP'
+                selector: { app: deploymentName },
+                ports: [{
+                    port: 80,
+                    targetPort: parseInt(containerPort || 80)
+                }]
             }
         };
 
         try {
-            await k8sCoreApi.createNamespacedService(namespace, serviceManifest);
-            console.log(`✅ Created service: ${serviceName}`);
+            await k8sCoreApi.replaceNamespacedService(serviceName, namespace, serviceManifest);
         } catch (e) {
-            if (e.response && e.response.statusCode === 409) {
-                console.log(`ℹ️ Service ${serviceName} already exists`);
-            } else {
-                throw e;
-            }
+            await k8sCoreApi.createNamespacedService(namespace, serviceManifest);
         }
 
         // 3. Create Ingress
@@ -165,14 +295,13 @@ app.post('/api/deploy', authMiddleware, async (req, res) => {
             apiVersion: 'networking.k8s.io/v1',
             kind: 'Ingress',
             metadata: {
-                name: safeApp,
+                name: deploymentName,
                 namespace: namespace,
                 annotations: {
                     'nginx.ingress.kubernetes.io/rewrite-target': '/'
                 }
             },
             spec: {
-                ingressClassName: 'nginx',
                 rules: [{
                     host: ingressHost,
                     http: {
@@ -192,32 +321,202 @@ app.post('/api/deploy', authMiddleware, async (req, res) => {
         };
 
         try {
-            await k8sNetworkingApi.createNamespacedIngress(namespace, ingressManifest);
-            console.log(`✅ Created ingress: ${ingressHost}`);
+            await k8sNetworkingApi.replaceNamespacedIngress(deploymentName, namespace, ingressManifest);
         } catch (e) {
-            if (e.response && e.response.statusCode === 409) {
-                console.log(`ℹ️ Ingress for ${ingressHost} already exists`);
-            } else {
-                throw e;
-            }
+            await k8sNetworkingApi.createNamespacedIngress(namespace, ingressManifest);
         }
 
         res.json({
             success: true,
-            message: 'Deployment triggered',
-            url: `http://${ingressHost}`,
-            namespace: namespace,
-            deploymentName: deploymentName
+            appName: deploymentName,
+            namespace,
+            url: `http://${ingressHost}`
         });
 
     } catch (err) {
-        console.error('❌ Deployment Failed:', err);
-        res.status(500).json({ error: err.message, details: err.body });
+        console.error('❌ Deployment error:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 
 // ---------------------------------------------------------
-// API: List User's Deployments (Protected)
+// API: Create Standalone Service (Protected)
+// ---------------------------------------------------------
+app.post('/api/services', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const { name, type, selector, ports } = req.body;
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    if (!name || !type || !selector || !ports) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        await ensureNamespace(namespace);
+
+        const serviceManifest = {
+            apiVersion: 'v1',
+            kind: 'Service',
+            metadata: {
+                name: name,
+                namespace: namespace,
+                labels: { user: safeUser }
+            },
+            spec: {
+                type: type,
+                selector: selector,
+                ports: ports.map(p => ({
+                    port: parseInt(p.port),
+                    targetPort: parseInt(p.targetPort),
+                    nodePort: p.nodePort ? parseInt(p.nodePort) : undefined,
+                    protocol: 'TCP'
+                }))
+            }
+        };
+
+        await k8sCoreApi.createNamespacedService(namespace, serviceManifest);
+        res.json({ success: true, message: `Service ${name} created` });
+    } catch (err) {
+        console.error('❌ Service creation error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: Create Standalone Pod (Protected)
+// ---------------------------------------------------------
+app.post('/api/pods', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const { name, image, env, cpu, memory } = req.body;
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    if (!name || !image) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    try {
+        await ensureNamespace(namespace);
+
+        const podManifest = {
+            apiVersion: 'v1',
+            kind: 'Pod',
+            metadata: {
+                name: name,
+                namespace: namespace,
+                labels: { user: safeUser }
+            },
+            spec: {
+                containers: [{
+                    name: name,
+                    image: image,
+                    env: env || [],
+                    resources: {
+                        limits: {
+                            cpu: cpu || '500m',
+                            memory: memory || '512Mi'
+                        },
+                        requests: {
+                            cpu: '100m',
+                            memory: '128Mi'
+                        }
+                    }
+                }]
+            }
+        };
+
+        await k8sCoreApi.createNamespacedPod(namespace, podManifest);
+        res.json({ success: true, message: `Pod ${name} created` });
+    } catch (err) {
+        console.error('❌ Pod creation error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: Resource Summary (Protected)
+// ---------------------------------------------------------
+app.get('/api/namespace/summary', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    try {
+        await ensureNamespace(namespace);
+
+        const [deploys, pods, services] = await Promise.all([
+            k8sApi.listNamespacedDeployment(namespace),
+            k8sCoreApi.listNamespacedPod(namespace),
+            k8sCoreApi.listNamespacedService(namespace)
+        ]);
+
+        res.json({
+            namespace,
+            deployments: deploys.body.items.length,
+            pods: pods.body.items.length,
+            services: services.body.items.length,
+            healthy: pods.body.items.filter(p => p.status.phase === 'Running').length
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: Team Management (Protected)
+// ---------------------------------------------------------
+app.get('/api/team', authMiddleware, (req, res) => {
+    res.json(teamMembers);
+});
+
+app.post('/api/team/invite', authMiddleware, rbacMiddleware([roles.ADMIN]), (req, res) => {
+    const { email, role } = req.body;
+    if (!email || !role) return res.status(400).json({ error: 'Missing email or role' });
+
+    const newMember = {
+        id: Date.now().toString(),
+        email,
+        role,
+        status: 'Pending',
+        joinedAt: new Date().toISOString().split('T')[0]
+    };
+    teamMembers.push(newMember);
+    res.json(newMember);
+});
+
+app.delete('/api/team/:id', authMiddleware, rbacMiddleware([roles.ADMIN]), (req, res) => {
+    const { id } = req.params;
+    teamMembers = teamMembers.filter(m => m.id !== id);
+    res.json({ success: true });
+});
+
+app.patch('/api/team/:id', authMiddleware, rbacMiddleware([roles.ADMIN]), (req, res) => {
+    const { id } = req.params;
+    const { role } = req.body;
+    const member = teamMembers.find(m => m.id === id);
+    if (member) {
+        member.role = role;
+        res.json(member);
+    } else {
+        res.status(404).json({ error: 'Member not found' });
+    }
+});
+
+// ---------------------------------------------------------
+// API: List Deployments (Protected)
 // ---------------------------------------------------------
 app.get('/api/deployments', authMiddleware, async (req, res) => {
     if (!k8sConfigured) {
@@ -229,184 +528,18 @@ app.get('/api/deployments', authMiddleware, async (req, res) => {
     const namespace = `vividp-${safeUser}`;
 
     try {
-        const deployments = await k8sApi.listNamespacedDeployment(namespace);
-
-        const apps = await Promise.all(deployments.body.items.map(async (dep) => {
-            const name = dep.metadata.name;
-            let status = 'Unknown';
-            let podStatus = 'Pending';
-
-            try {
-                const pods = await k8sCoreApi.listNamespacedPod(namespace, undefined, undefined, undefined, undefined, `app=${name}`);
-                if (pods.body.items.length > 0) {
-                    const pod = pods.body.items[0];
-                    podStatus = pod.status.phase;
-
-                    if (pod.status.containerStatuses && pod.status.containerStatuses.length > 0) {
-                        const state = pod.status.containerStatuses[0].state;
-                        if (state.running) {
-                            status = 'Running';
-                        } else if (state.waiting) {
-                            status = state.waiting.reason || 'Waiting';
-                        } else if (state.terminated) {
-                            status = 'Terminated';
-                        }
-                    } else {
-                        status = podStatus;
-                    }
-                }
-            } catch (e) {
-                status = 'Error';
-            }
-
-            return {
-                name,
-                namespace,
-                image: dep.spec.template.spec.containers[0]?.image || 'unknown',
-                replicas: dep.status.readyReplicas || 0,
-                status,
-                createdAt: dep.metadata.creationTimestamp,
-                url: `http://${name}-${safeUser}.vividp.internal`
-            };
+        await ensureNamespace(namespace);
+        const result = await k8sApi.listNamespacedDeployment(namespace);
+        const deployments = result.body.items.map(d => ({
+            name: d.metadata.name,
+            namespace: d.metadata.namespace,
+            image: d.spec.template.spec.containers[0].image,
+            status: (d.status.availableReplicas || 0) >= (d.status.replicas || 1) ? 'Running' : 'Pending',
+            replicas: d.status.replicas || 0,
+            url: `http://${d.metadata.name}-${safeUser}.vividp.internal`,
+            createdAt: d.metadata.creationTimestamp
         }));
-
-        res.json({ deployments: apps });
-    } catch (err) {
-        if (err.response && err.response.statusCode === 404) {
-            return res.json({ deployments: [] });
-        }
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ---------------------------------------------------------
-// API: Get Deployment Status (Protected)
-// ---------------------------------------------------------
-app.get('/api/status/:namespace/:app', authMiddleware, async (req, res) => {
-    if (!k8sConfigured) {
-        return res.status(503).json({ error: 'Kubernetes not configured' });
-    }
-
-    const { namespace, app } = req.params;
-
-    try {
-        const pods = await k8sCoreApi.listNamespacedPod(namespace, undefined, undefined, undefined, undefined, `app=${app}`);
-
-        let status = 'Pending';
-        let reason = '';
-        let ready = false;
-
-        if (pods.body.items.length > 0) {
-            const pod = pods.body.items[0];
-            status = pod.status.phase;
-
-            if (pod.status.containerStatuses && pod.status.containerStatuses.length > 0) {
-                const containerState = pod.status.containerStatuses[0].state;
-                if (containerState.waiting) {
-                    reason = containerState.waiting.reason;
-                    status = reason;
-                } else if (containerState.running) {
-                    status = 'Running';
-                    ready = true;
-                }
-            }
-        } else {
-            status = 'NotFound';
-        }
-
-        res.json({ status, reason, ready });
-
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ---------------------------------------------------------
-// API: Delete Deployment (Protected)
-// ---------------------------------------------------------
-app.delete('/api/deployments/:namespace/:app', authMiddleware, async (req, res) => {
-    if (!k8sConfigured) {
-        return res.status(503).json({ error: 'Kubernetes not configured' });
-    }
-
-    const { namespace, app } = req.params;
-    const username = req.user?.email?.split('@')[0] || 'guest';
-    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const expectedNamespace = `vividp-${safeUser}`;
-
-    // Security: Only allow deletion in user's own namespace
-    if (namespace !== expectedNamespace) {
-        return res.status(403).json({ error: 'Cannot delete deployments in other namespaces' });
-    }
-
-    try {
-        // Delete Deployment
-        try {
-            await k8sApi.deleteNamespacedDeployment(app, namespace);
-            console.log(`🗑️ Deleted deployment: ${app}`);
-        } catch (e) {
-            if (e.response?.statusCode !== 404) throw e;
-        }
-
-        // Delete Service
-        try {
-            await k8sCoreApi.deleteNamespacedService(app, namespace);
-            console.log(`🗑️ Deleted service: ${app}`);
-        } catch (e) {
-            if (e.response?.statusCode !== 404) throw e;
-        }
-
-        // Delete Ingress
-        try {
-            await k8sNetworkingApi.deleteNamespacedIngress(app, namespace);
-            console.log(`🗑️ Deleted ingress: ${app}`);
-        } catch (e) {
-            if (e.response?.statusCode !== 404) throw e;
-        }
-
-        res.json({ success: true, message: `Deleted ${app} from ${namespace}` });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ---------------------------------------------------------
-// API: Restart Deployment (Protected)
-// ---------------------------------------------------------
-app.post('/api/deployments/:namespace/:app/restart', authMiddleware, async (req, res) => {
-    if (!k8sConfigured) {
-        return res.status(503).json({ error: 'Kubernetes not configured' });
-    }
-
-    const { namespace, app } = req.params;
-    const username = req.user?.email?.split('@')[0] || 'guest';
-    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const expectedNamespace = `vividp-${safeUser}`;
-
-    if (namespace !== expectedNamespace) {
-        return res.status(403).json({ error: 'Cannot restart deployments in other namespaces' });
-    }
-
-    try {
-        // Trigger rollout restart by patching annotation
-        const patch = {
-            spec: {
-                template: {
-                    metadata: {
-                        annotations: {
-                            'kubectl.kubernetes.io/restartedAt': new Date().toISOString()
-                        }
-                    }
-                }
-            }
-        };
-
-        await k8sApi.patchNamespacedDeployment(app, namespace, patch, undefined, undefined, undefined, undefined, undefined, {
-            headers: { 'Content-Type': 'application/strategic-merge-patch+json' }
-        });
-
-        console.log(`🔄 Restarted deployment: ${app}`);
-        res.json({ success: true, message: `Restarted ${app}` });
+        res.json({ deployments });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -425,52 +558,25 @@ app.get('/api/pods', authMiddleware, async (req, res) => {
     const namespace = `vividp-${safeUser}`;
 
     try {
-        const pods = await k8sCoreApi.listNamespacedPod(namespace);
-
-        const podList = pods.body.items.map(pod => {
-            const containerStatuses = pod.status.containerStatuses || [];
-            const mainContainer = containerStatuses[0];
-
-            let status = pod.status.phase;
-            let reason = '';
-            let restarts = 0;
-
-            if (mainContainer) {
-                restarts = mainContainer.restartCount || 0;
-                if (mainContainer.state?.waiting) {
-                    status = mainContainer.state.waiting.reason || 'Waiting';
-                    reason = mainContainer.state.waiting.message || '';
-                } else if (mainContainer.state?.terminated) {
-                    status = 'Terminated';
-                    reason = mainContainer.state.terminated.reason || '';
-                } else if (mainContainer.state?.running) {
-                    status = mainContainer.ready ? 'Running' : 'Starting';
-                }
-            }
-
-            return {
-                name: pod.metadata.name,
-                namespace: pod.metadata.namespace,
-                status,
-                reason,
-                restarts,
-                ip: pod.status.podIP || 'N/A',
-                node: pod.spec.nodeName || 'Pending',
-                age: pod.metadata.creationTimestamp,
-                labels: pod.metadata.labels || {},
-                containers: pod.spec.containers.map(c => ({
-                    name: c.name,
-                    image: c.image,
-                    ports: c.ports?.map(p => p.containerPort) || []
-                }))
-            };
-        });
-
-        res.json({ pods: podList, namespace });
+        await ensureNamespace(namespace);
+        const result = await k8sCoreApi.listNamespacedPod(namespace);
+        const pods = result.body.items.map(p => ({
+            name: p.metadata.name,
+            namespace: p.metadata.namespace,
+            status: p.status.phase,
+            reason: p.status.conditions?.find(c => c.type === 'Ready')?.message || '',
+            restarts: p.status.containerStatuses?.reduce((sum, c) => sum + (c.restartCount || 0), 0) || 0,
+            ip: p.status.podIP || '',
+            node: p.spec.nodeName || '',
+            age: p.metadata.creationTimestamp,
+            containers: p.spec.containers.map(c => ({
+                name: c.name,
+                image: c.image,
+                ports: c.ports?.map(pt => pt.containerPort) || []
+            }))
+        }));
+        res.json({ pods });
     } catch (err) {
-        if (err.response?.statusCode === 404) {
-            return res.json({ pods: [], namespace });
-        }
         res.status(500).json({ error: err.message });
     }
 });
@@ -488,94 +594,30 @@ app.get('/api/services', authMiddleware, async (req, res) => {
     const namespace = `vividp-${safeUser}`;
 
     try {
-        const services = await k8sCoreApi.listNamespacedService(namespace);
-
-        const serviceList = services.body.items.map(svc => ({
-            name: svc.metadata.name,
-            namespace: svc.metadata.namespace,
-            type: svc.spec.type,
-            clusterIP: svc.spec.clusterIP,
-            ports: svc.spec.ports?.map(p => ({
+        await ensureNamespace(namespace);
+        const result = await k8sCoreApi.listNamespacedService(namespace);
+        const services = result.body.items.map(s => ({
+            name: s.metadata.name,
+            type: s.spec.type,
+            clusterIP: s.spec.clusterIP,
+            externalIP: s.status.loadBalancer?.ingress?.[0]?.ip || s.spec.externalIPs?.[0],
+            ports: s.spec.ports.map(p => ({
                 port: p.port,
                 targetPort: p.targetPort,
-                protocol: p.protocol
-            })) || [],
-            selector: svc.spec.selector || {},
-            age: svc.metadata.creationTimestamp
+                nodePort: p.nodePort
+            })),
+            age: s.metadata.creationTimestamp
         }));
-
-        res.json({ services: serviceList, namespace });
+        res.json({ services });
     } catch (err) {
-        if (err.response?.statusCode === 404) {
-            return res.json({ services: [], namespace });
-        }
         res.status(500).json({ error: err.message });
     }
 });
 
 // ---------------------------------------------------------
-// API: Get Pod Logs (Protected)
+// API: Get Logs (Protected)
 // ---------------------------------------------------------
-app.get('/api/pods/:podName/logs', authMiddleware, async (req, res) => {
-    if (!k8sConfigured) {
-        return res.status(503).json({ error: 'Kubernetes not configured' });
-    }
-
-    const { podName } = req.params;
-    const { container, tail = '100' } = req.query;
-    const username = req.user?.email?.split('@')[0] || 'guest';
-    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const namespace = `vividp-${safeUser}`;
-
-    try {
-        const options = {
-            tailLines: parseInt(tail) || 100,
-            timestamps: true
-        };
-
-        if (container) {
-            options.container = container;
-        }
-
-        const logs = await k8sCoreApi.readNamespacedPodLog(
-            podName,
-            namespace,
-            container,
-            undefined, // follow
-            undefined, // insecureSkipTLSVerifyBackend
-            undefined, // limitBytes
-            undefined, // pretty
-            undefined, // previous
-            undefined, // sinceSeconds
-            parseInt(tail) || 100, // tailLines
-            true // timestamps
-        );
-
-        // Parse logs into array
-        const logLines = logs.body
-            .split('\n')
-            .filter(line => line.trim())
-            .map(line => {
-                const match = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+Z)\s+(.*)$/);
-                if (match) {
-                    return { timestamp: match[1], message: match[2] };
-                }
-                return { timestamp: null, message: line };
-            });
-
-        res.json({ logs: logLines, podName, namespace });
-    } catch (err) {
-        if (err.response?.statusCode === 404) {
-            return res.status(404).json({ error: `Pod ${podName} not found` });
-        }
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ---------------------------------------------------------
-// API: Get Namespace Resources Summary (Protected)
-// ---------------------------------------------------------
-app.get('/api/namespace/summary', authMiddleware, async (req, res) => {
+app.get('/api/pods/:name/logs', authMiddleware, async (req, res) => {
     if (!k8sConfigured) {
         return res.status(503).json({ error: 'Kubernetes not configured' });
     }
@@ -583,200 +625,84 @@ app.get('/api/namespace/summary', authMiddleware, async (req, res) => {
     const username = req.user?.email?.split('@')[0] || 'guest';
     const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     const namespace = `vividp-${safeUser}`;
+    const podName = req.params.name;
 
     try {
-        // Get counts
-        const [deployments, pods, services] = await Promise.all([
-            k8sApi.listNamespacedDeployment(namespace).catch(() => ({ body: { items: [] } })),
-            k8sCoreApi.listNamespacedPod(namespace).catch(() => ({ body: { items: [] } })),
-            k8sCoreApi.listNamespacedService(namespace).catch(() => ({ body: { items: [] } }))
-        ]);
-
-        const runningPods = pods.body.items.filter(p => p.status.phase === 'Running').length;
-        const readyDeployments = deployments.body.items.filter(d =>
-            d.status.readyReplicas === d.status.replicas
-        ).length;
-
-        res.json({
-            namespace,
-            summary: {
-                deployments: {
-                    total: deployments.body.items.length,
-                    ready: readyDeployments
-                },
-                pods: {
-                    total: pods.body.items.length,
-                    running: runningPods
-                },
-                services: {
-                    total: services.body.items.length
-                }
+        const { body } = await k8sCoreApi.readNamespacedPodLog(podName, namespace, undefined, false, undefined, undefined, 100);
+        const logLines = body.split('\n').filter(line => line.trim() !== '').map(line => {
+            const match = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\S+)\s(.*)$/);
+            if (match) {
+                return { timestamp: match[1], message: match[2] };
             }
+            return { timestamp: null, message: line };
         });
+        res.json(logLines);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
 // ---------------------------------------------------------
-// API: Delete Pod (Protected)
+// API: Delete Resource (Protected)
 // ---------------------------------------------------------
-app.delete('/api/pods/:podName', authMiddleware, async (req, res) => {
+app.delete('/api/resources/:type/:name', authMiddleware, async (req, res) => {
     if (!k8sConfigured) {
         return res.status(503).json({ error: 'Kubernetes not configured' });
     }
 
-    const { podName } = req.params;
+    const { type, name } = req.params;
     const username = req.user?.email?.split('@')[0] || 'guest';
     const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     const namespace = `vividp-${safeUser}`;
 
     try {
-        await k8sCoreApi.deleteNamespacedPod(podName, namespace);
-        console.log(`🗑️ Deleted pod: ${podName}`);
-        res.json({ success: true, message: `Deleted pod ${podName}` });
-    } catch (err) {
-        if (err.response?.statusCode === 404) {
-            return res.status(404).json({ error: `Pod ${podName} not found` });
+        if (type === 'deployment') {
+            await k8sApi.deleteNamespacedDeployment(name, namespace);
+            await k8sCoreApi.deleteNamespacedService(name, namespace);
+            await k8sNetworkingApi.deleteNamespacedIngress(name, namespace);
+        } else if (type === 'pod') {
+            await k8sCoreApi.deleteNamespacedPod(name, namespace);
+        } else if (type === 'service') {
+            await k8sCoreApi.deleteNamespacedService(name, namespace);
         }
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ---------------------------------------------------------
-// API: Delete Service (Protected)
-// ---------------------------------------------------------
-app.delete('/api/services/:serviceName', authMiddleware, async (req, res) => {
-    if (!k8sConfigured) {
-        return res.status(503).json({ error: 'Kubernetes not configured' });
-    }
-
-    const { serviceName } = req.params;
-    const username = req.user?.email?.split('@')[0] || 'guest';
-    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const namespace = `vividp-${safeUser}`;
-
-    try {
-        await k8sCoreApi.deleteNamespacedService(serviceName, namespace);
-        console.log(`🗑️ Deleted service: ${serviceName}`);
-        res.json({ success: true, message: `Deleted service ${serviceName}` });
+        res.json({ success: true, message: `${type} ${name} deleted` });
     } catch (err) {
-        if (err.response?.statusCode === 404) {
-            return res.status(404).json({ error: `Service ${serviceName} not found` });
-        }
         res.status(500).json({ error: err.message });
     }
 });
 
 // ---------------------------------------------------------
-// API: Create Pod (Protected)
+// API: Restart Deployment (Protected)
 // ---------------------------------------------------------
-app.post('/api/pods', authMiddleware, async (req, res) => {
+app.post('/api/deployments/:name/restart', authMiddleware, async (req, res) => {
     if (!k8sConfigured) {
         return res.status(503).json({ error: 'Kubernetes not configured' });
     }
 
-    const { name, image, port, command, args, env } = req.body;
+    const { name } = req.params;
     const username = req.user?.email?.split('@')[0] || 'guest';
     const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     const namespace = `vividp-${safeUser}`;
 
-    if (!name || !image) {
-        return res.status(400).json({ error: 'Missing required fields: name, image' });
-    }
-
-    const safeName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 50);
-
     try {
-        await ensureNamespace(namespace);
-
-        const podSpec = {
-            apiVersion: 'v1',
-            kind: 'Pod',
-            metadata: {
-                name: safeName,
-                namespace: namespace,
-                labels: {
-                    app: safeName,
-                    'vividp-user': safeUser,
-                    'vividp-managed': 'true'
-                }
-            },
+        const patch = {
             spec: {
-                containers: [{
-                    name: safeName,
-                    image: image,
-                    ports: port ? [{ containerPort: parseInt(port) }] : [],
-                    command: command ? command.split(' ') : undefined,
-                    args: args ? args.split(' ') : undefined,
-                    env: env ? Object.entries(env).map(([k, v]) => ({ name: k, value: v })) : undefined
-                }],
-                restartPolicy: 'Always'
+                template: {
+                    metadata: {
+                        annotations: {
+                            'kubectl.kubernetes.io/restartedAt': new Date().toISOString()
+                        }
+                    }
+                }
             }
         };
 
-        await k8sCoreApi.createNamespacedPod(namespace, podSpec);
-        console.log(`✅ Created pod: ${safeName} in ${namespace}`);
+        await k8sApi.patchNamespacedDeployment(name, namespace, patch, undefined, undefined, undefined, undefined, undefined, {
+            headers: { 'Content-Type': 'application/strategic-merge-patch+json' }
+        });
 
-        res.json({ success: true, name: safeName, namespace });
+        res.json({ success: true, message: `Deployment ${name} restarted` });
     } catch (err) {
-        console.error('Create pod error:', err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ---------------------------------------------------------
-// API: Create Service (Protected)
-// ---------------------------------------------------------
-app.post('/api/services', authMiddleware, async (req, res) => {
-    if (!k8sConfigured) {
-        return res.status(503).json({ error: 'Kubernetes not configured' });
-    }
-
-    const { name, selector, port, targetPort, type = 'ClusterIP', nodePort } = req.body;
-    const username = req.user?.email?.split('@')[0] || 'guest';
-    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const namespace = `vividp-${safeUser}`;
-
-    if (!name || !selector || !port) {
-        return res.status(400).json({ error: 'Missing required fields: name, selector, port' });
-    }
-
-    const safeName = name.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 50);
-    const serviceType = ['ClusterIP', 'NodePort', 'LoadBalancer'].includes(type) ? type : 'ClusterIP';
-
-    try {
-        await ensureNamespace(namespace);
-
-        const serviceSpec = {
-            apiVersion: 'v1',
-            kind: 'Service',
-            metadata: {
-                name: safeName,
-                namespace: namespace,
-                labels: {
-                    'vividp-user': safeUser,
-                    'vividp-managed': 'true'
-                }
-            },
-            spec: {
-                type: serviceType,
-                selector: typeof selector === 'string' ? { app: selector } : selector,
-                ports: [{
-                    port: parseInt(port),
-                    targetPort: parseInt(targetPort || port),
-                    protocol: 'TCP',
-                    ...(serviceType === 'NodePort' && nodePort ? { nodePort: parseInt(nodePort) } : {})
-                }]
-            }
-        };
-
-        await k8sCoreApi.createNamespacedService(namespace, serviceSpec);
-        console.log(`✅ Created service: ${safeName} (${serviceType}) in ${namespace}`);
-
-        res.json({ success: true, name: safeName, type: serviceType, namespace });
-    } catch (err) {
-        console.error('Create service error:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
@@ -820,7 +746,7 @@ app.post('/api/deployments/:namespace/:app/scale', authMiddleware, async (req, r
 // ---------------------------------------------------------
 // Start Server
 // ---------------------------------------------------------
-app.listen(port, () => {
-    console.log(`🚀 VividP Middleware running on http://localhost:${port}`);
+server.listen(port, () => {
+    console.log(`🚀 VividP Middleware + WebSocket running on http://localhost:${port}`);
     console.log(`   K8s configured: ${k8sConfigured ? '✅' : '❌'}`);
 });

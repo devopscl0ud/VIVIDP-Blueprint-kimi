@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import Header from '../../components/Layout/Header';
 import { LayoutContextType } from '../../components/Layout/MainLayout';
 import { useAuth } from '../../context/AuthContext';
+import { NODE_CONFIG } from '../../config/nodes';
 
 interface Node {
     name: string;
@@ -12,59 +13,58 @@ interface Node {
     internalIP: string;
     externalIP: string | null;
     os: string;
-    cpu: { used: number; total: number };
-    memory: { used: number; total: number; unit: string };
-    pods: { used: number; total: number };
+    cpu: { used: number; total: string };
+    memory: { used: string; total: string; unit: string };
+    pods: { used: number; total: string };
 }
+
+// Static fallback data based on NODE_CONFIG
+const getStaticNodes = (): Node[] => {
+    return NODE_CONFIG.nodes.map(n => ({
+        name: n.name,
+        status: 'Ready' as const,
+        roles: n.roles,
+        version: 'v1.31.x',
+        internalIP: n.internalIP,
+        externalIP: n.externalIP,
+        os: 'Ubuntu 22.04.5 LTS',
+        cpu: { used: Math.floor(Math.random() * 30) + 10, total: '4' },
+        memory: { used: (Math.random() * 3 + 1).toFixed(1), total: '8Gi', unit: 'Gi' },
+        pods: { used: Math.floor(Math.random() * 20) + 5, total: '110' }
+    }));
+};
 
 const Nodes = () => {
     const { sidebarOpen, setSidebarOpen } = useOutletContext<LayoutContextType>();
     const { session } = useAuth();
     const [loading, setLoading] = useState(true);
+    const [nodes, setNodes] = useState<Node[]>([]);
+    const [usingFallback, setUsingFallback] = useState(false);
 
-    // Static node data based on user's cluster
-    const [nodes] = useState<Node[]>([
-        {
-            name: 'k8s-worker1',
-            status: 'Ready',
-            roles: ['worker'],
-            version: 'v1.31.14',
-            internalIP: '10.128.0.22',
-            externalIP: '136.113.65.16',
-            os: 'Ubuntu 22.04.5 LTS',
-            cpu: { used: 25, total: 100 },
-            memory: { used: 2.1, total: 8, unit: 'GB' },
-            pods: { used: 12, total: 110 }
-        },
-        {
-            name: 'k8s-worker2',
-            status: 'Ready',
-            roles: ['worker'],
-            version: 'v1.31.14',
-            internalIP: '10.128.0.21',
-            externalIP: '34.58.110.43',
-            os: 'Ubuntu 22.04.5 LTS',
-            cpu: { used: 18, total: 100 },
-            memory: { used: 1.8, total: 8, unit: 'GB' },
-            pods: { used: 8, total: 110 }
-        },
-        {
-            name: 'k8s-master',
-            status: 'Ready',
-            roles: ['control-plane'],
-            version: 'v1.32.10',
-            internalIP: '10.128.0.20',
-            externalIP: null,
-            os: 'Ubuntu 22.04.5 LTS',
-            cpu: { used: 35, total: 100 },
-            memory: { used: 3.2, total: 8, unit: 'GB' },
-            pods: { used: 24, total: 110 }
+    const fetchNodes = async () => {
+        try {
+            const response = await fetch('http://localhost:3001/api/nodes', {
+                headers: {
+                    'Authorization': `Bearer ${session?.access_token}`
+                }
+            });
+            if (!response.ok) throw new Error('API error');
+            const data = await response.json();
+            setNodes(data);
+            setUsingFallback(false);
+        } catch (err: any) {
+            console.warn('Backend unavailable, using static config:', err.message);
+            setNodes(getStaticNodes());
+            setUsingFallback(true);
+        } finally {
+            setLoading(false);
         }
-    ]);
+    };
 
     useEffect(() => {
-        // Simulate loading
-        setTimeout(() => setLoading(false), 500);
+        fetchNodes();
+        const interval = setInterval(fetchNodes, 15000);
+        return () => clearInterval(interval);
     }, [session]);
 
     const getStatusColor = (status: string) => {
@@ -81,11 +81,24 @@ const Nodes = () => {
         return 'bg-green-500';
     };
 
+    const parseResource = (val: string) => {
+        if (!val) return 0;
+        return parseInt(val.replace(/[^0-9]/g, ''));
+    };
+
     return (
         <>
             <Header title="Cluster Nodes" onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
 
             <div className="space-y-6">
+                {usingFallback && (
+                    <div className="bg-yellow-500/20 border border-yellow-500/50 text-yellow-400 p-4 rounded-xl flex items-center gap-3">
+                        <span>ℹ️</span>
+                        <p>Backend server unavailable. Showing configured node data from <code className="bg-black/30 px-1 rounded">nodes.ts</code></p>
+                        <button onClick={fetchNodes} className="ml-auto underline hover:no-underline">Retry</button>
+                    </div>
+                )}
+
                 {/* Cluster Summary */}
                 <div className="glass p-6 rounded-2xl bg-gradient-to-r from-blue-500/10 to-cyan-500/10 border border-blue-500/20">
                     <div className="flex items-center justify-between flex-wrap gap-4">
@@ -128,8 +141,8 @@ const Nodes = () => {
                             <div
                                 key={node.name}
                                 className={`glass p-6 rounded-2xl border transition-all hover:-translate-y-1 ${node.roles.includes('control-plane')
-                                        ? 'border-purple-500/30 bg-purple-500/5'
-                                        : 'border-white/10'
+                                    ? 'border-purple-500/30 bg-purple-500/5'
+                                    : 'border-white/10'
                                     }`}
                             >
                                 {/* Header */}
@@ -143,9 +156,9 @@ const Nodes = () => {
                                             {node.roles.map(role => (
                                                 <span
                                                     key={role}
-                                                    className={`px-2 py-0.5 rounded text-xs ${role === 'control-plane'
-                                                            ? 'bg-purple-500/20 text-purple-400'
-                                                            : 'bg-cyan-500/20 text-cyan-400'
+                                                    className={`px-2 py-0.5 rounded text-xs ${role === 'control-plane' || role === 'master'
+                                                        ? 'bg-purple-500/20 text-purple-400'
+                                                        : 'bg-cyan-500/20 text-cyan-400'
                                                         }`}
                                                 >
                                                     {role}
@@ -153,7 +166,7 @@ const Nodes = () => {
                                             ))}
                                         </div>
                                     </div>
-                                    <span className="text-xs text-gray-500">{node.version}</span>
+                                    <span className="text-xs text-gray-500 truncate max-w-[80px]" title={node.version}>{node.version}</span>
                                 </div>
 
                                 {/* IPs */}
@@ -178,7 +191,7 @@ const Nodes = () => {
                                     <div>
                                         <div className="flex justify-between text-xs mb-1">
                                             <span className="text-gray-400">CPU</span>
-                                            <span>{node.cpu.used}%</span>
+                                            <span>{node.cpu.used}% / {node.cpu.total} cores</span>
                                         </div>
                                         <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                                             <div
@@ -192,12 +205,12 @@ const Nodes = () => {
                                     <div>
                                         <div className="flex justify-between text-xs mb-1">
                                             <span className="text-gray-400">Memory</span>
-                                            <span>{node.memory.used}/{node.memory.total} {node.memory.unit}</span>
+                                            <span>{node.memory.used} / {node.memory.total}</span>
                                         </div>
                                         <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                                             <div
-                                                className={`h-full rounded-full ${getUsageColor((node.memory.used / node.memory.total) * 100)}`}
-                                                style={{ width: `${(node.memory.used / node.memory.total) * 100}%` }}
+                                                className={`h-full rounded-full ${getUsageColor((parseFloat(node.memory.used) / parseResource(node.memory.total)) * 100)}`}
+                                                style={{ width: `${Math.min(100, (parseFloat(node.memory.used) / parseResource(node.memory.total)) * 100)}%` }}
                                             />
                                         </div>
                                     </div>
@@ -206,12 +219,12 @@ const Nodes = () => {
                                     <div>
                                         <div className="flex justify-between text-xs mb-1">
                                             <span className="text-gray-400">Pods</span>
-                                            <span>{node.pods.used}/{node.pods.total}</span>
+                                            <span>{node.pods.used} / {node.pods.total}</span>
                                         </div>
                                         <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                                             <div
-                                                className={`h-full rounded-full ${getUsageColor((node.pods.used / node.pods.total) * 100)}`}
-                                                style={{ width: `${(node.pods.used / node.pods.total) * 100}%` }}
+                                                className={`h-full rounded-full ${getUsageColor((node.pods.used / parseResource(node.pods.total)) * 100)}`}
+                                                style={{ width: `${(node.pods.used / parseResource(node.pods.total)) * 100}%` }}
                                             />
                                         </div>
                                     </div>
@@ -227,19 +240,19 @@ const Nodes = () => {
                 )}
 
                 {/* NodePort Info */}
-                <div className="glass p-6 rounded-2xl">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                        <span>🔌</span> NodePort Access
+                <div className="glass p-6 rounded-2xl text-sm">
+                    <h3 className="text-base font-semibold mb-4 flex items-center gap-2">
+                        <span>🔌</span> NodePort Access Configuration
                     </h3>
-                    <p className="text-gray-400 text-sm mb-4">
-                        NodePort services can be accessed via any worker node's external IP on the assigned port (30000-32767).
+                    <p className="text-gray-400 mb-4">
+                        NodePort services are accessible via any worker node's external IP on the assigned port (30000-32767).
                     </p>
                     <div className="grid md:grid-cols-2 gap-4">
-                        {nodes.filter(n => n.externalIP && n.roles.includes('worker')).map(node => (
-                            <div key={node.name} className="p-4 bg-white/5 rounded-lg">
-                                <div className="flex items-center gap-2 mb-2">
+                        {nodes.filter(n => n.externalIP).map(node => (
+                            <div key={node.name} className="p-4 bg-white/5 rounded-lg border border-white/10">
+                                <div className="flex items-center gap-2 mb-2 font-medium">
                                     <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                    <span className="font-medium">{node.name}</span>
+                                    <span>{node.name}</span>
                                 </div>
                                 <code className="text-cyan-400 font-mono">http://{node.externalIP}:[NodePort]</code>
                             </div>

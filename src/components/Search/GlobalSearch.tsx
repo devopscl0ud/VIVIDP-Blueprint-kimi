@@ -63,7 +63,7 @@ const GlobalSearch = ({ isOpen, onClose, session }: GlobalSearchProps) => {
                 'Authorization': session?.access_token ? `Bearer ${session.access_token}` : ''
             };
 
-            const res = await fetch('/api/deployments', { headers });
+            const res = await fetch('http://localhost:3001/api/deployments', { headers });
             if (res.ok) {
                 const data = await res.json();
                 const deploymentResults: SearchResult[] = (data.deployments || [])
