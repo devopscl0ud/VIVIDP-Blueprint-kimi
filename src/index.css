@@ -5,9 +5,38 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --bg-primary: #0A0E1A;
+    --bg-secondary: #0F172A;
+    --text-primary: #F8FAFC;
+    --text-secondary: #94A3B8;
+    --accent-primary: #06B6D4;
+    --accent-secondary: #1E3A8A;
+    --glass-bg: rgba(30, 58, 138, 0.1);
+    --glass-border: rgba(8, 145, 178, 0.2);
+  }
+
+  .light {
+    --bg-primary: #F8FAFC;
+    --bg-secondary: #E2E8F0;
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --accent-primary: #0891B2;
+    --accent-secondary: #1D4ED8;
+    --glass-bg: rgba(255, 255, 255, 0.7);
+    --glass-border: rgba(148, 163, 184, 0.3);
+  }
+
   body {
-    @apply bg-deep-space text-slate-50 antialiased;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    @apply antialiased;
     font-family: 'Inter', sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  .light body {
+    @apply bg-slate-50 text-slate-900;
   }
 
   code,

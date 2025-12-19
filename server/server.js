@@ -413,6 +413,262 @@ app.post('/api/deployments/:namespace/:app/restart', authMiddleware, async (req,
 });
 
 // ---------------------------------------------------------
+// API: List Pods (Protected)
+// ---------------------------------------------------------
+app.get('/api/pods', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    try {
+        const pods = await k8sCoreApi.listNamespacedPod(namespace);
+
+        const podList = pods.body.items.map(pod => {
+            const containerStatuses = pod.status.containerStatuses || [];
+            const mainContainer = containerStatuses[0];
+
+            let status = pod.status.phase;
+            let reason = '';
+            let restarts = 0;
+
+            if (mainContainer) {
+                restarts = mainContainer.restartCount || 0;
+                if (mainContainer.state?.waiting) {
+                    status = mainContainer.state.waiting.reason || 'Waiting';
+                    reason = mainContainer.state.waiting.message || '';
+                } else if (mainContainer.state?.terminated) {
+                    status = 'Terminated';
+                    reason = mainContainer.state.terminated.reason || '';
+                } else if (mainContainer.state?.running) {
+                    status = mainContainer.ready ? 'Running' : 'Starting';
+                }
+            }
+
+            return {
+                name: pod.metadata.name,
+                namespace: pod.metadata.namespace,
+                status,
+                reason,
+                restarts,
+                ip: pod.status.podIP || 'N/A',
+                node: pod.spec.nodeName || 'Pending',
+                age: pod.metadata.creationTimestamp,
+                labels: pod.metadata.labels || {},
+                containers: pod.spec.containers.map(c => ({
+                    name: c.name,
+                    image: c.image,
+                    ports: c.ports?.map(p => p.containerPort) || []
+                }))
+            };
+        });
+
+        res.json({ pods: podList, namespace });
+    } catch (err) {
+        if (err.response?.statusCode === 404) {
+            return res.json({ pods: [], namespace });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: List Services (Protected)
+// ---------------------------------------------------------
+app.get('/api/services', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    try {
+        const services = await k8sCoreApi.listNamespacedService(namespace);
+
+        const serviceList = services.body.items.map(svc => ({
+            name: svc.metadata.name,
+            namespace: svc.metadata.namespace,
+            type: svc.spec.type,
+            clusterIP: svc.spec.clusterIP,
+            ports: svc.spec.ports?.map(p => ({
+                port: p.port,
+                targetPort: p.targetPort,
+                protocol: p.protocol
+            })) || [],
+            selector: svc.spec.selector || {},
+            age: svc.metadata.creationTimestamp
+        }));
+
+        res.json({ services: serviceList, namespace });
+    } catch (err) {
+        if (err.response?.statusCode === 404) {
+            return res.json({ services: [], namespace });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: Get Pod Logs (Protected)
+// ---------------------------------------------------------
+app.get('/api/pods/:podName/logs', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const { podName } = req.params;
+    const { container, tail = '100' } = req.query;
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    try {
+        const options = {
+            tailLines: parseInt(tail) || 100,
+            timestamps: true
+        };
+
+        if (container) {
+            options.container = container;
+        }
+
+        const logs = await k8sCoreApi.readNamespacedPodLog(
+            podName,
+            namespace,
+            container,
+            undefined, // follow
+            undefined, // insecureSkipTLSVerifyBackend
+            undefined, // limitBytes
+            undefined, // pretty
+            undefined, // previous
+            undefined, // sinceSeconds
+            parseInt(tail) || 100, // tailLines
+            true // timestamps
+        );
+
+        // Parse logs into array
+        const logLines = logs.body
+            .split('\n')
+            .filter(line => line.trim())
+            .map(line => {
+                const match = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d+Z)\s+(.*)$/);
+                if (match) {
+                    return { timestamp: match[1], message: match[2] };
+                }
+                return { timestamp: null, message: line };
+            });
+
+        res.json({ logs: logLines, podName, namespace });
+    } catch (err) {
+        if (err.response?.statusCode === 404) {
+            return res.status(404).json({ error: `Pod ${podName} not found` });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: Get Namespace Resources Summary (Protected)
+// ---------------------------------------------------------
+app.get('/api/namespace/summary', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    try {
+        // Get counts
+        const [deployments, pods, services] = await Promise.all([
+            k8sApi.listNamespacedDeployment(namespace).catch(() => ({ body: { items: [] } })),
+            k8sCoreApi.listNamespacedPod(namespace).catch(() => ({ body: { items: [] } })),
+            k8sCoreApi.listNamespacedService(namespace).catch(() => ({ body: { items: [] } }))
+        ]);
+
+        const runningPods = pods.body.items.filter(p => p.status.phase === 'Running').length;
+        const readyDeployments = deployments.body.items.filter(d =>
+            d.status.readyReplicas === d.status.replicas
+        ).length;
+
+        res.json({
+            namespace,
+            summary: {
+                deployments: {
+                    total: deployments.body.items.length,
+                    ready: readyDeployments
+                },
+                pods: {
+                    total: pods.body.items.length,
+                    running: runningPods
+                },
+                services: {
+                    total: services.body.items.length
+                }
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: Delete Pod (Protected)
+// ---------------------------------------------------------
+app.delete('/api/pods/:podName', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const { podName } = req.params;
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    try {
+        await k8sCoreApi.deleteNamespacedPod(podName, namespace);
+        console.log(`🗑️ Deleted pod: ${podName}`);
+        res.json({ success: true, message: `Deleted pod ${podName}` });
+    } catch (err) {
+        if (err.response?.statusCode === 404) {
+            return res.status(404).json({ error: `Pod ${podName} not found` });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
+// API: Delete Service (Protected)
+// ---------------------------------------------------------
+app.delete('/api/services/:serviceName', authMiddleware, async (req, res) => {
+    if (!k8sConfigured) {
+        return res.status(503).json({ error: 'Kubernetes not configured' });
+    }
+
+    const { serviceName } = req.params;
+    const username = req.user?.email?.split('@')[0] || 'guest';
+    const safeUser = username.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    const namespace = `vividp-${safeUser}`;
+
+    try {
+        await k8sCoreApi.deleteNamespacedService(serviceName, namespace);
+        console.log(`🗑️ Deleted service: ${serviceName}`);
+        res.json({ success: true, message: `Deleted service ${serviceName}` });
+    } catch (err) {
+        if (err.response?.statusCode === 404) {
+            return res.status(404).json({ error: `Service ${serviceName} not found` });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ---------------------------------------------------------
 // Start Server
 // ---------------------------------------------------------
 app.listen(port, () => {

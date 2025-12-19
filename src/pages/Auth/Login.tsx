@@ -99,6 +99,15 @@ const Login = () => {
         }
     };
 
+    const handleGitHubLogin = async () => {
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({ provider: 'github' });
+            if (error) throw error;
+        } catch (err: any) {
+            setError(err.message);
+        }
+    };
+
     return (
         <div className="relative min-h-screen bg-deep-space text-white flex items-center justify-center font-sans overflow-hidden">
             {/* Background Effects */}
@@ -178,7 +187,7 @@ const Login = () => {
                             <span className="text-lg group-hover:scale-110 transition-transform">G</span>
                             <span className="text-sm font-medium text-gray-300">Google</span>
                         </button>
-                        <button className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg py-2.5 transition-colors group">
+                        <button onClick={handleGitHubLogin} className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg py-2.5 transition-colors group">
                             <span className="text-lg group-hover:scale-110 transition-transform">🐙</span>
                             <span className="text-sm font-medium text-gray-300">GitHub</span>
                         </button>

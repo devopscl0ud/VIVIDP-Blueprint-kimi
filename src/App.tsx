@@ -8,6 +8,8 @@ import Security from './pages/Security/Security';
 import Settings from './pages/Settings/Settings';
 import Portal from './pages/Portal/Portal';
 import Billing from './pages/Billing/Billing';
+import Activity from './pages/Activity/Activity';
+import Help from './pages/Help/Help';
 import MainLayout from './components/Layout/MainLayout';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -18,8 +20,13 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
         return (
             <div className="min-h-screen bg-deep-space flex items-center justify-center">
                 <div className="text-center">
-                    <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-nebula-blue to-electric-cyan flex items-center justify-center font-bold text-xl animate-pulse">V</div>
-                    <p className="text-cyan-400">Loading VividP...</p>
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-nebula-blue to-electric-cyan flex items-center justify-center font-bold text-2xl animate-pulse shadow-lg shadow-cyan-500/30">V</div>
+                    <p className="text-cyan-400 animate-pulse">Loading VividP...</p>
+                    <div className="mt-4 flex justify-center gap-1">
+                        <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
                 </div>
             </div>
         );
@@ -32,6 +39,25 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
     return children;
 }
 
+// Auto redirect if logged in
+function PublicRoute({ children }: { children: JSX.Element }) {
+    const { user, loading } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-deep-space flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-nebula-blue to-electric-cyan flex items-center justify-center font-bold text-xl animate-pulse">V</div>
+            </div>
+        );
+    }
+
+    if (user) {
+        return <Navigate to="/dashboard" replace />;
+    }
+
+    return children;
+}
+
 function App() {
     return (
         <AuthProvider>
@@ -39,8 +65,8 @@ function App() {
                 <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<LandingPage />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/signup" element={<Signup />} />
+                    <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+                    <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
 
                     {/* Protected Routes */}
                     <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
@@ -50,6 +76,8 @@ function App() {
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/portal" element={<Portal />} />
                         <Route path="/billing" element={<Billing />} />
+                        <Route path="/activity" element={<Activity />} />
+                        <Route path="/help" element={<Help />} />
                     </Route>
 
                     {/* Catch-all redirect */}

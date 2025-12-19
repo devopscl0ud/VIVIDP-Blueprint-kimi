@@ -3,7 +3,29 @@ import { useOutletContext } from 'react-router-dom';
 import Header from '../../components/Layout/Header';
 import { LayoutContextType } from '../../components/Layout/MainLayout';
 import { useAuth } from '../../context/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { ResourceCard, StatusBadge, ResourceTable, ConfirmModal } from '../../components/Portal/ResourceCard';
+import LogViewer from '../../components/Portal/LogViewer';
+
+interface Pod {
+    name: string;
+    namespace: string;
+    status: string;
+    reason: string;
+    restarts: number;
+    ip: string;
+    node: string;
+    age: string;
+    containers: { name: string; image: string; ports: number[] }[];
+}
+
+interface Service {
+    name: string;
+    namespace: string;
+    type: string;
+    clusterIP: string;
+    ports: { port: number; targetPort: string | number; protocol: string }[];
+    age: string;
+}
 
 interface Deployment {
     name: string;
@@ -15,250 +37,510 @@ interface Deployment {
     createdAt: string;
 }
 
+interface LogLine {
+    timestamp: string | null;
+    message: string;
+}
+
+interface Summary {
+    deployments: { total: number; ready: number };
+    pods: { total: number; running: number };
+    services: { total: number };
+}
+
+type TabType = 'overview' | 'deployments' | 'pods' | 'services' | 'logs';
+
 const Portal = () => {
     const { sidebarOpen, setSidebarOpen } = useOutletContext<LayoutContextType>();
     const { user, session } = useAuth();
 
-    // Deployment Modal State
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [deployData, setDeployData] = useState({ appName: '', image: '', port: '80' });
-    const [deployStatus, setDeployStatus] = useState<'idle' | 'deploying' | 'success' | 'error'>('idle');
-    const [deployedUrl, setDeployedUrl] = useState('');
-    const [deployedNamespace, setDeployedNamespace] = useState('');
-    const [deployedAppName, setDeployedAppName] = useState('');
-    const [logs, setLogs] = useState<string[]>([]);
+    // UI State
+    const [activeTab, setActiveTab] = useState<TabType>('overview');
+    const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
+    const [deleteModal, setDeleteModal] = useState<{ type: string; name: string } | null>(null);
+    const [selectedPodForLogs, setSelectedPodForLogs] = useState<string | null>(null);
 
-    // Deployments List
+    // Data State
+    const [summary, setSummary] = useState<Summary | null>(null);
     const [deployments, setDeployments] = useState<Deployment[]>([]);
-    const [loadingDeployments, setLoadingDeployments] = useState(true);
-    const [pollingActive, setPollingActive] = useState(false);
+    const [pods, setPods] = useState<Pod[]>([]);
+    const [services, setServices] = useState<Service[]>([]);
+    const [logs, setLogs] = useState<LogLine[]>([]);
+    const [namespace, setNamespace] = useState('');
 
-    // Get auth token for API requests
-    const getAuthHeaders = useCallback(() => {
-        return {
-            'Content-Type': 'application/json',
-            'Authorization': session?.access_token ? `Bearer ${session.access_token}` : ''
-        };
-    }, [session]);
+    // Loading States
+    const [loading, setLoading] = useState({ summary: true, deployments: true, pods: true, services: true, logs: false });
 
-    // Fetch user's deployments
-    const fetchDeployments = useCallback(async () => {
+    // Deploy Form
+    const [deployForm, setDeployForm] = useState({ appName: '', image: '', port: '80' });
+    const [deployStatus, setDeployStatus] = useState<'idle' | 'deploying' | 'success' | 'error'>('idle');
+    const [deployLogs, setDeployLogs] = useState<string[]>([]);
+
+    // Auth headers
+    const getAuthHeaders = useCallback(() => ({
+        'Content-Type': 'application/json',
+        'Authorization': session?.access_token ? `Bearer ${session.access_token}` : ''
+    }), [session]);
+
+    // Fetch functions
+    const fetchSummary = useCallback(async () => {
         try {
-            const response = await fetch('/api/deployments', {
-                headers: getAuthHeaders()
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                setDeployments(data.deployments || []);
+            const res = await fetch('/api/namespace/summary', { headers: getAuthHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setSummary(data.summary);
+                setNamespace(data.namespace);
             }
-        } catch (err) {
-            console.error('Failed to fetch deployments:', err);
-        } finally {
-            setLoadingDeployments(false);
-        }
+        } catch (e) { console.error(e); }
+        finally { setLoading(l => ({ ...l, summary: false })); }
     }, [getAuthHeaders]);
 
-    // Initial load and polling
-    useEffect(() => {
-        fetchDeployments();
-
-        // Poll every 10 seconds for status updates
-        const interval = setInterval(fetchDeployments, 10000);
-        return () => clearInterval(interval);
-    }, [fetchDeployments]);
-
-    // Poll during deployment
-    useEffect(() => {
-        if (!pollingActive || !deployedNamespace || !deployedAppName) return;
-
-        const pollStatus = async () => {
-            try {
-                const response = await fetch(`/api/status/${deployedNamespace}/${deployedAppName}`, {
-                    headers: getAuthHeaders()
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    setLogs(prev => [...prev, `📡 Status: ${data.status}`]);
-
-                    if (data.ready) {
-                        setLogs(prev => [...prev, '✅ Deployment is ready!']);
-                        setPollingActive(false);
-                        fetchDeployments();
-                    } else if (data.status === 'ErrImagePull' || data.status === 'CrashLoopBackOff') {
-                        setLogs(prev => [...prev, `❌ Deployment failed: ${data.status}`]);
-                        setPollingActive(false);
-                        setDeployStatus('error');
-                    }
-                }
-            } catch (err) {
-                console.error('Polling error:', err);
+    const fetchDeployments = useCallback(async () => {
+        try {
+            const res = await fetch('/api/deployments', { headers: getAuthHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setDeployments(data.deployments || []);
             }
-        };
+        } catch (e) { console.error(e); }
+        finally { setLoading(l => ({ ...l, deployments: false })); }
+    }, [getAuthHeaders]);
 
-        const interval = setInterval(pollStatus, 5000);
-        pollStatus(); // Initial poll
+    const fetchPods = useCallback(async () => {
+        try {
+            const res = await fetch('/api/pods', { headers: getAuthHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setPods(data.pods || []);
+            }
+        } catch (e) { console.error(e); }
+        finally { setLoading(l => ({ ...l, pods: false })); }
+    }, [getAuthHeaders]);
 
+    const fetchServices = useCallback(async () => {
+        try {
+            const res = await fetch('/api/services', { headers: getAuthHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setServices(data.services || []);
+            }
+        } catch (e) { console.error(e); }
+        finally { setLoading(l => ({ ...l, services: false })); }
+    }, [getAuthHeaders]);
+
+    const fetchLogs = useCallback(async (podName: string) => {
+        setLoading(l => ({ ...l, logs: true }));
+        try {
+            const res = await fetch(`/api/pods/${podName}/logs?tail=100`, { headers: getAuthHeaders() });
+            if (res.ok) {
+                const data = await res.json();
+                setLogs(data.logs || []);
+            }
+        } catch (e) { console.error(e); }
+        finally { setLoading(l => ({ ...l, logs: false })); }
+    }, [getAuthHeaders]);
+
+    // Initial load
+    useEffect(() => {
+        fetchSummary();
+        fetchDeployments();
+        fetchPods();
+        fetchServices();
+    }, [fetchSummary, fetchDeployments, fetchPods, fetchServices]);
+
+    // Auto-refresh
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchSummary();
+            fetchDeployments();
+            fetchPods();
+        }, 10000);
         return () => clearInterval(interval);
-    }, [pollingActive, deployedNamespace, deployedAppName, getAuthHeaders, fetchDeployments]);
+    }, [fetchSummary, fetchDeployments, fetchPods]);
+
+    // Load logs when pod selected
+    useEffect(() => {
+        if (selectedPodForLogs) {
+            fetchLogs(selectedPodForLogs);
+        }
+    }, [selectedPodForLogs, fetchLogs]);
 
     // Deploy handler
     const handleDeploy = async (e: React.FormEvent) => {
         e.preventDefault();
         setDeployStatus('deploying');
-        setLogs(['🚀 Initiating deployment sequence...']);
+        setDeployLogs(['🚀 Starting deployment...']);
 
         try {
-            setLogs(prev => [...prev, '📦 Pulling Docker image: ' + deployData.image]);
+            setDeployLogs(l => [...l, `📦 Pulling image: ${deployForm.image}`]);
 
-            const response = await fetch('/api/deploy', {
+            const res = await fetch('/api/deploy', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({
-                    appName: deployData.appName,
-                    image: deployData.image,
-                    containerPort: deployData.port
+                    appName: deployForm.appName,
+                    image: deployForm.image,
+                    containerPort: deployForm.port
                 })
             });
 
-            const data = await response.json();
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
 
-            if (!response.ok) {
-                throw new Error(data.error || 'Deployment failed');
-            }
+            setDeployLogs(l => [...l, '✅ Deployment created!', `🌐 URL: ${data.url}`]);
+            setDeployStatus('success');
 
-            setLogs(prev => [...prev, '🔧 Creating Kubernetes resources...']);
-            setLogs(prev => [...prev, '🌐 Configuring Ingress...']);
-            setDeployedUrl(data.url);
-            setDeployedNamespace(data.namespace);
-            setDeployedAppName(data.deploymentName);
-            setPollingActive(true);
-
+            // Refresh data
             setTimeout(() => {
-                setLogs(prev => [...prev, '✅ Resources created! Waiting for pod to be ready...']);
-                setDeployStatus('success');
-            }, 1000);
+                fetchSummary();
+                fetchDeployments();
+                fetchPods();
+                fetchServices();
+            }, 2000);
 
         } catch (err: any) {
-            setLogs(prev => [...prev, '❌ Error: ' + err.message]);
+            setDeployLogs(l => [...l, `❌ Error: ${err.message}`]);
             setDeployStatus('error');
         }
     };
 
-    // Delete deployment
-    const handleDelete = async (deployment: Deployment) => {
-        if (!confirm(`Delete ${deployment.name}? This cannot be undone.`)) return;
-
+    // Delete handlers
+    const handleDeleteDeployment = async (name: string) => {
         try {
-            const response = await fetch(`/api/deployments/${deployment.namespace}/${deployment.name}`, {
+            await fetch(`/api/deployments/${namespace}/${name}`, {
                 method: 'DELETE',
                 headers: getAuthHeaders()
             });
-
-            if (response.ok) {
-                setDeployments(prev => prev.filter(d => d.name !== deployment.name));
-            } else {
-                const data = await response.json();
-                alert(`Delete failed: ${data.error}`);
-            }
-        } catch (err: any) {
-            alert(`Delete failed: ${err.message}`);
-        }
+            fetchDeployments();
+            fetchPods();
+            fetchServices();
+            fetchSummary();
+        } catch (e) { console.error(e); }
     };
 
-    // Restart deployment
-    const handleRestart = async (deployment: Deployment) => {
+    const handleDeletePod = async (name: string) => {
         try {
-            const response = await fetch(`/api/deployments/${deployment.namespace}/${deployment.name}/restart`, {
+            await fetch(`/api/pods/${name}`, { method: 'DELETE', headers: getAuthHeaders() });
+            fetchPods();
+            fetchSummary();
+        } catch (e) { console.error(e); }
+    };
+
+    const handleDeleteService = async (name: string) => {
+        try {
+            await fetch(`/api/services/${name}`, { method: 'DELETE', headers: getAuthHeaders() });
+            fetchServices();
+            fetchSummary();
+        } catch (e) { console.error(e); }
+    };
+
+    const handleRestart = async (name: string) => {
+        try {
+            await fetch(`/api/deployments/${namespace}/${name}/restart`, {
                 method: 'POST',
                 headers: getAuthHeaders()
             });
-
-            if (response.ok) {
-                setDeployments(prev => prev.map(d =>
-                    d.name === deployment.name ? { ...d, status: 'Restarting' } : d
-                ));
-                setTimeout(fetchDeployments, 5000);
-            } else {
-                const data = await response.json();
-                alert(`Restart failed: ${data.error}`);
-            }
-        } catch (err: any) {
-            alert(`Restart failed: ${err.message}`);
-        }
+            fetchPods();
+            fetchDeployments();
+        } catch (e) { console.error(e); }
     };
 
-    // Reset modal state
-    const closeModal = () => {
-        setIsModalOpen(false);
-        setDeployStatus('idle');
-        setDeployData({ appName: '', image: '', port: '80' });
-        setLogs([]);
-        setPollingActive(false);
+    // Calculate time ago
+    const timeAgo = (date: string) => {
+        const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+        if (seconds < 60) return `${seconds}s`;
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+        return `${Math.floor(seconds / 86400)}d`;
     };
 
     const templates = [
-        { title: 'Nginx Web Server', desc: 'Static site hosting', icon: '🌐', image: 'nginx:alpine', port: '80' },
-        { title: 'Node.js API', desc: 'Express.js backend', icon: '⚡', image: 'node:18-alpine', port: '3000' },
-        { title: 'Redis Cache', desc: 'In-memory data store', icon: '🔴', image: 'redis:alpine', port: '6379' },
-        { title: 'PostgreSQL', desc: 'Relational database', icon: '🐘', image: 'postgres:15-alpine', port: '5432' },
+        { name: 'nginx', title: 'Nginx', icon: '🌐', image: 'nginx:alpine', port: '80' },
+        { name: 'node', title: 'Node.js', icon: '💚', image: 'node:18-alpine', port: '3000' },
+        { name: 'redis', title: 'Redis', icon: '🔴', image: 'redis:alpine', port: '6379' },
+        { name: 'postgres', title: 'PostgreSQL', icon: '🐘', image: 'postgres:15-alpine', port: '5432' },
     ];
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'Running': return 'bg-green-500/20 text-green-400';
-            case 'Pending': return 'bg-yellow-500/20 text-yellow-400';
-            case 'Restarting': return 'bg-blue-500/20 text-blue-400';
-            case 'ContainerCreating': return 'bg-blue-500/20 text-blue-400';
-            default: return 'bg-red-500/20 text-red-400';
-        }
-    };
 
     return (
         <>
             <Header title="Developer Portal" onMenuClick={() => setSidebarOpen(!sidebarOpen)}>
-                <button
-                    onClick={() => setIsModalOpen(true)}
-                    className="bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg shadow-cyan-500/20 transition-all hover:-translate-y-0.5"
-                >
-                    + New Deployment
-                </button>
+                <div className="flex items-center gap-4">
+                    <div className="hidden md:flex items-center gap-2 text-sm">
+                        <span className="text-gray-400">Namespace:</span>
+                        <code className="bg-black/30 px-2 py-1 rounded text-cyan-400 font-mono text-xs">{namespace || '...'}</code>
+                    </div>
+                    <button
+                        onClick={() => { setIsDeployModalOpen(true); setDeployStatus('idle'); setDeployLogs([]); }}
+                        className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-cyan-500/20 transition-all hover:-translate-y-0.5 hover:shadow-xl flex items-center gap-2"
+                    >
+                        <span>🚀</span> Deploy
+                    </button>
+                </div>
             </Header>
 
-            {/* Deployment Modal */}
-            {isModalOpen && (
+            {/* Tabs */}
+            <div className="flex gap-1 mb-6 bg-white/5 p-1 rounded-lg overflow-x-auto">
+                {[
+                    { id: 'overview', label: 'Overview', icon: '📊' },
+                    { id: 'deployments', label: 'Deployments', icon: '🚀' },
+                    { id: 'pods', label: 'Pods', icon: '📦' },
+                    { id: 'services', label: 'Services', icon: '🔌' },
+                    { id: 'logs', label: 'Logs', icon: '📜' },
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as TabType)}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id
+                                ? 'bg-cyan-500 text-white shadow-lg'
+                                : 'text-gray-400 hover:text-white hover:bg-white/10'
+                            }`}
+                    >
+                        <span>{tab.icon}</span>
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* Tab Content */}
+            <div className="animate-fade-in">
+                {activeTab === 'overview' && (
+                    <div className="space-y-6">
+                        {/* Stats Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <ResourceCard
+                                title="Deployments"
+                                count={summary?.deployments.total ?? 0}
+                                subtitle={`${summary?.deployments.ready ?? 0} ready`}
+                                icon="🚀"
+                                color="cyan"
+                                loading={loading.summary}
+                                onClick={() => setActiveTab('deployments')}
+                            />
+                            <ResourceCard
+                                title="Pods"
+                                count={summary?.pods.total ?? 0}
+                                subtitle={`${summary?.pods.running ?? 0} running`}
+                                icon="📦"
+                                color="green"
+                                loading={loading.summary}
+                                onClick={() => setActiveTab('pods')}
+                            />
+                            <ResourceCard
+                                title="Services"
+                                count={summary?.services.total ?? 0}
+                                subtitle="Exposed"
+                                icon="🔌"
+                                color="purple"
+                                loading={loading.summary}
+                                onClick={() => setActiveTab('services')}
+                            />
+                        </div>
+
+                        {/* Quick Deploy Templates */}
+                        <div className="glass p-6 rounded-xl">
+                            <h3 className="text-lg font-bold mb-4">Quick Deploy Templates</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {templates.map(t => (
+                                    <button
+                                        key={t.name}
+                                        onClick={() => {
+                                            setDeployForm({ appName: `${t.name}-app`, image: t.image, port: t.port });
+                                            setIsDeployModalOpen(true);
+                                            setDeployStatus('idle');
+                                            setDeployLogs([]);
+                                        }}
+                                        className="p-4 bg-white/5 rounded-lg border border-white/10 hover:border-cyan-500/50 transition-all hover:-translate-y-1 text-center group"
+                                    >
+                                        <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">{t.icon}</div>
+                                        <div className="font-medium">{t.title}</div>
+                                        <div className="text-xs text-gray-500 font-mono mt-1">{t.image}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Recent Deployments */}
+                        <div className="glass p-6 rounded-xl">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-bold">Recent Deployments</h3>
+                                <button onClick={() => setActiveTab('deployments')} className="text-cyan-400 text-sm hover:underline">
+                                    View All →
+                                </button>
+                            </div>
+                            {deployments.length === 0 ? (
+                                <div className="text-center py-8 text-gray-400">
+                                    <div className="text-4xl mb-2">🚀</div>
+                                    <p>No deployments yet. Create your first one!</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {deployments.slice(0, 3).map(d => (
+                                        <div key={d.name} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+                                            <div className="flex items-center gap-3">
+                                                <StatusBadge status={d.status} pulse />
+                                                <div>
+                                                    <div className="font-medium">{d.name}</div>
+                                                    <div className="text-xs text-gray-400 font-mono">{d.image}</div>
+                                                </div>
+                                            </div>
+                                            <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-cyan-400 text-xs hover:underline">
+                                                {d.url}
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'deployments' && (
+                    <ResourceTable
+                        headers={['Name', 'Image', 'Status', 'Replicas', 'URL', 'Actions']}
+                        isEmpty={deployments.length === 0}
+                        loading={loading.deployments}
+                        emptyMessage="No deployments found. Deploy your first app!"
+                    >
+                        {deployments.map(d => (
+                            <tr key={d.name} className="border-t border-white/5 hover:bg-white/5">
+                                <td className="p-4 font-medium">{d.name}</td>
+                                <td className="p-4 font-mono text-xs text-gray-400">{d.image}</td>
+                                <td className="p-4"><StatusBadge status={d.status} pulse /></td>
+                                <td className="p-4">{d.replicas}</td>
+                                <td className="p-4">
+                                    <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline text-sm">
+                                        {d.url}
+                                    </a>
+                                </td>
+                                <td className="p-4">
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleRestart(d.name)} className="p-1.5 hover:bg-blue-500/20 rounded text-blue-400" title="Restart">🔄</button>
+                                        <button onClick={() => setDeleteModal({ type: 'deployment', name: d.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </ResourceTable>
+                )}
+
+                {activeTab === 'pods' && (
+                    <ResourceTable
+                        headers={['Name', 'Status', 'Restarts', 'IP', 'Node', 'Age', 'Actions']}
+                        isEmpty={pods.length === 0}
+                        loading={loading.pods}
+                        emptyMessage="No pods found in your namespace."
+                    >
+                        {pods.map(p => (
+                            <tr key={p.name} className="border-t border-white/5 hover:bg-white/5">
+                                <td className="p-4">
+                                    <div className="font-medium">{p.name}</div>
+                                    <div className="text-xs text-gray-500">{p.containers[0]?.image}</div>
+                                </td>
+                                <td className="p-4"><StatusBadge status={p.status} pulse /></td>
+                                <td className="p-4">{p.restarts}</td>
+                                <td className="p-4 font-mono text-xs">{p.ip}</td>
+                                <td className="p-4 text-gray-400 text-sm">{p.node}</td>
+                                <td className="p-4 text-gray-400 text-sm">{timeAgo(p.age)}</td>
+                                <td className="p-4">
+                                    <div className="flex gap-2">
+                                        <button onClick={() => { setSelectedPodForLogs(p.name); setActiveTab('logs'); }} className="p-1.5 hover:bg-cyan-500/20 rounded text-cyan-400" title="Logs">📜</button>
+                                        <button onClick={() => setDeleteModal({ type: 'pod', name: p.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </ResourceTable>
+                )}
+
+                {activeTab === 'services' && (
+                    <ResourceTable
+                        headers={['Name', 'Type', 'Cluster IP', 'Ports', 'Age', 'Actions']}
+                        isEmpty={services.length === 0}
+                        loading={loading.services}
+                        emptyMessage="No services found in your namespace."
+                    >
+                        {services.map(s => (
+                            <tr key={s.name} className="border-t border-white/5 hover:bg-white/5">
+                                <td className="p-4 font-medium">{s.name}</td>
+                                <td className="p-4"><span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs">{s.type}</span></td>
+                                <td className="p-4 font-mono text-xs">{s.clusterIP}</td>
+                                <td className="p-4 font-mono text-xs">{s.ports.map(p => `${p.port}:${p.targetPort}`).join(', ')}</td>
+                                <td className="p-4 text-gray-400 text-sm">{timeAgo(s.age)}</td>
+                                <td className="p-4">
+                                    <button onClick={() => setDeleteModal({ type: 'service', name: s.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </ResourceTable>
+                )}
+
+                {activeTab === 'logs' && (
+                    <div className="space-y-4">
+                        {/* Pod Selector */}
+                        <div className="flex items-center gap-4">
+                            <label className="text-gray-400">Select Pod:</label>
+                            <select
+                                value={selectedPodForLogs || ''}
+                                onChange={e => setSelectedPodForLogs(e.target.value)}
+                                className="bg-black/40 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-cyan-500 outline-none"
+                            >
+                                <option value="">-- Select a pod --</option>
+                                {pods.map(p => (
+                                    <option key={p.name} value={p.name}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedPodForLogs ? (
+                            <LogViewer
+                                logs={logs}
+                                loading={loading.logs}
+                                podName={selectedPodForLogs}
+                                onRefresh={() => fetchLogs(selectedPodForLogs)}
+                            />
+                        ) : (
+                            <div className="glass p-12 rounded-xl text-center text-gray-400">
+                                <div className="text-4xl mb-4">📜</div>
+                                <p>Select a pod to view its logs</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Deploy Modal */}
+            {isDeployModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="glass w-full max-w-lg rounded-xl overflow-hidden border border-cyan-500/30 animate-scale-in">
                         <div className="p-6 border-b border-white/10 flex justify-between items-center">
-                            <h3 className="text-xl font-bold">One-Click Deploy</h3>
-                            <button onClick={closeModal} className="text-gray-400 hover:text-white text-xl">✕</button>
+                            <h3 className="text-xl font-bold flex items-center gap-2">
+                                <span>🚀</span> Deploy Application
+                            </h3>
+                            <button onClick={() => setIsDeployModalOpen(false)} className="text-gray-400 hover:text-white text-xl">✕</button>
                         </div>
 
                         {deployStatus === 'idle' || deployStatus === 'error' ? (
                             <form onSubmit={handleDeploy} className="p-6 space-y-4">
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Application Name</label>
+                                    <label className="block text-sm text-gray-400 mb-1">Application Name *</label>
                                     <input
                                         required
-                                        type="text"
                                         pattern="[a-z0-9-]+"
                                         title="Lowercase letters, numbers, and hyphens only"
                                         placeholder="my-app"
-                                        className="w-full bg-black/40 border border-gray-600 rounded-lg px-4 py-2 text-white focus:border-cyan-500 outline-none"
-                                        value={deployData.appName}
-                                        onChange={e => setDeployData({ ...deployData, appName: e.target.value.toLowerCase() })}
+                                        className="w-full bg-black/40 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 outline-none transition-colors"
+                                        value={deployForm.appName}
+                                        onChange={e => setDeployForm({ ...deployForm, appName: e.target.value.toLowerCase() })}
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm text-gray-400 mb-1">Docker Image</label>
+                                    <label className="block text-sm text-gray-400 mb-1">Docker Image *</label>
                                     <input
                                         required
-                                        type="text"
                                         placeholder="nginx:latest"
-                                        className="w-full bg-black/40 border border-gray-600 rounded-lg px-4 py-2 text-white focus:border-cyan-500 outline-none"
-                                        value={deployData.image}
-                                        onChange={e => setDeployData({ ...deployData, image: e.target.value })}
+                                        className="w-full bg-black/40 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 outline-none transition-colors"
+                                        value={deployForm.image}
+                                        onChange={e => setDeployForm({ ...deployForm, image: e.target.value })}
                                     />
                                 </div>
                                 <div>
@@ -266,50 +548,45 @@ const Portal = () => {
                                     <input
                                         type="number"
                                         placeholder="80"
-                                        className="w-full bg-black/40 border border-gray-600 rounded-lg px-4 py-2 text-white focus:border-cyan-500 outline-none"
-                                        value={deployData.port}
-                                        onChange={e => setDeployData({ ...deployData, port: e.target.value })}
+                                        className="w-full bg-black/40 border border-gray-600 rounded-lg px-4 py-3 text-white focus:border-cyan-500 outline-none transition-colors"
+                                        value={deployForm.port}
+                                        onChange={e => setDeployForm({ ...deployForm, port: e.target.value })}
                                     />
                                 </div>
 
-                                {deployStatus === 'error' && logs.length > 0 && (
+                                {deployStatus === 'error' && deployLogs.length > 0 && (
                                     <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                                        {logs[logs.length - 1]}
+                                        {deployLogs[deployLogs.length - 1]}
                                     </div>
                                 )}
 
                                 <div className="pt-4 flex justify-end gap-3">
-                                    <button type="button" onClick={closeModal} className="px-4 py-2 text-gray-400 hover:text-white">Cancel</button>
-                                    <button type="submit" className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:shadow-lg hover:shadow-cyan-500/25 transition-all">
+                                    <button type="button" onClick={() => setIsDeployModalOpen(false)} className="px-4 py-2 text-gray-400 hover:text-white">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:shadow-lg transition-all">
                                         🚀 Deploy Now
                                     </button>
                                 </div>
                             </form>
                         ) : (
                             <div className="p-6 space-y-4">
-                                {/* Log Output */}
                                 <div className="bg-black/40 rounded-lg p-4 max-h-48 overflow-y-auto font-mono text-sm space-y-1">
-                                    {logs.map((log, i) => (
-                                        <div key={i} className={`${log.includes('❌') ? 'text-red-400' : log.includes('✅') ? 'text-green-400' : 'text-cyan-400'}`}>
+                                    {deployLogs.map((log, i) => (
+                                        <div key={i} className={log.includes('❌') ? 'text-red-400' : log.includes('✅') ? 'text-green-400' : 'text-cyan-400'}>
                                             {log}
                                         </div>
                                     ))}
-                                    {pollingActive && (
-                                        <div className="animate-pulse text-cyan-500">_ Polling for status...</div>
+                                    {deployStatus === 'deploying' && (
+                                        <div className="animate-pulse text-cyan-500">_ Processing...</div>
                                     )}
                                 </div>
 
-                                {deployStatus === 'success' && !pollingActive && (
-                                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
-                                        <div className="text-2xl mb-2">🎉</div>
-                                        <div className="text-lg font-bold mb-2">Deployed Successfully!</div>
-                                        <a href={deployedUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline break-all block mb-3">
-                                            {deployedUrl}
-                                        </a>
-                                        <p className="text-xs text-gray-400 mb-4">
-                                            Add this host to your /etc/hosts file pointing to your cluster IP to access it.
-                                        </p>
-                                        <button onClick={closeModal} className="bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-lg transition-colors">
+                                {deployStatus === 'success' && (
+                                    <div className="text-center">
+                                        <div className="text-4xl mb-2">🎉</div>
+                                        <p className="text-green-400 font-medium">Deployment created successfully!</p>
+                                        <button onClick={() => setIsDeployModalOpen(false)} className="mt-4 bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-lg">
                                             Done
                                         </button>
                                     </div>
@@ -320,141 +597,20 @@ const Portal = () => {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
-                {/* Main Content */}
-                <div className="lg:col-span-2 space-y-8">
-                    {/* Quick Deploy Templates */}
-                    <section>
-                        <h3 className="text-xl font-bold mb-4">Quick Deploy Templates</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {templates.map((t, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => {
-                                        setDeployData({ appName: t.title.toLowerCase().replace(/\s+/g, '-'), image: t.image, port: t.port });
-                                        setIsModalOpen(true);
-                                    }}
-                                    className="glass p-6 rounded-xl border border-white/10 hover:border-cyan-500/50 transition-all hover:-translate-y-1 text-left group"
-                                >
-                                    <div className="text-3xl mb-3 group-hover:scale-110 transition-transform inline-block">{t.icon}</div>
-                                    <h4 className="font-bold text-lg">{t.title}</h4>
-                                    <p className="text-sm text-gray-400">{t.desc}</p>
-                                    <p className="text-xs text-cyan-400 mt-2 font-mono">{t.image}</p>
-                                </button>
-                            ))}
-                        </div>
-                    </section>
-
-                    {/* Deployments List */}
-                    <section>
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-xl font-bold">Your Deployments</h3>
-                            <button onClick={fetchDeployments} className="text-sm text-cyan-400 hover:underline">
-                                ↻ Refresh
-                            </button>
-                        </div>
-                        <div className="glass rounded-xl overflow-hidden">
-                            {loadingDeployments ? (
-                                <div className="p-8 text-center text-gray-400">Loading deployments...</div>
-                            ) : deployments.length === 0 ? (
-                                <div className="p-8 text-center text-gray-400">
-                                    <div className="text-4xl mb-2">📦</div>
-                                    <p>No deployments yet. Create your first one!</p>
-                                </div>
-                            ) : (
-                                <table className="w-full text-left">
-                                    <thead className="bg-white/5 text-gray-400 text-sm">
-                                        <tr>
-                                            <th className="p-4">Name</th>
-                                            <th className="p-4">Image</th>
-                                            <th className="p-4">Status</th>
-                                            <th className="p-4">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="text-sm">
-                                        {deployments.map((dep) => (
-                                            <tr key={dep.name} className="border-t border-gray-700 hover:bg-white/5">
-                                                <td className="p-4">
-                                                    <div className="font-medium">{dep.name}</div>
-                                                    <a href={dep.url} target="_blank" rel="noopener noreferrer" className="text-xs text-cyan-400 hover:underline">
-                                                        {dep.url}
-                                                    </a>
-                                                </td>
-                                                <td className="p-4 text-gray-400 font-mono text-xs">{dep.image}</td>
-                                                <td className="p-4">
-                                                    <span className={`px-2 py-1 rounded text-xs ${getStatusColor(dep.status)}`}>
-                                                        {dep.status}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => handleRestart(dep)}
-                                                            className="text-blue-400 hover:text-blue-300"
-                                                            title="Restart"
-                                                        >
-                                                            🔄
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleDelete(dep)}
-                                                            className="text-red-400 hover:text-red-300"
-                                                            title="Delete"
-                                                        >
-                                                            🗑️
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                    </section>
-                </div>
-
-                {/* Sidebar Stats */}
-                <div className="space-y-6">
-                    <div className="glass p-6 rounded-xl">
-                        <h3 className="text-xl font-bold mb-4">Quick Stats</h3>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-white/5 rounded-lg text-center">
-                                <div className="text-2xl font-bold text-cyan-400">{deployments.length}</div>
-                                <div className="text-xs text-gray-400">Active Deployments</div>
-                            </div>
-                            <div className="p-4 bg-white/5 rounded-lg text-center">
-                                <div className="text-2xl font-bold text-green-400">
-                                    {deployments.filter(d => d.status === 'Running').length}
-                                </div>
-                                <div className="text-xs text-gray-400">Running</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="glass p-6 rounded-xl">
-                        <h3 className="text-xl font-bold mb-4">User Info</h3>
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 flex items-center justify-center">
-                                    <span className="text-white font-semibold">
-                                        {user?.email?.charAt(0).toUpperCase() || 'U'}
-                                    </span>
-                                </div>
-                                <div>
-                                    <p className="font-medium">{user?.user_metadata?.full_name || 'User'}</p>
-                                    <p className="text-xs text-gray-400">{user?.email}</p>
-                                </div>
-                            </div>
-                            <div className="pt-3 border-t border-white/10">
-                                <p className="text-xs text-gray-400">Namespace:</p>
-                                <p className="font-mono text-cyan-400 text-sm">
-                                    vividp-{user?.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9-]/g, '-') || 'guest'}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            {/* Delete Confirmation Modal */}
+            <ConfirmModal
+                isOpen={!!deleteModal}
+                onClose={() => setDeleteModal(null)}
+                onConfirm={() => {
+                    if (deleteModal?.type === 'deployment') handleDeleteDeployment(deleteModal.name);
+                    if (deleteModal?.type === 'pod') handleDeletePod(deleteModal.name);
+                    if (deleteModal?.type === 'service') handleDeleteService(deleteModal.name);
+                }}
+                title={`Delete ${deleteModal?.type}?`}
+                message={`Are you sure you want to delete "${deleteModal?.name}"? This action cannot be undone.`}
+                confirmText="Delete"
+                confirmColor="red"
+            />
 
             <style>{`
                 @keyframes fade-in {

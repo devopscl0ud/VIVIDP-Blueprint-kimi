@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
+import { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
@@ -27,13 +27,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
+
+            // If we have a session and we're on login/signup/home, redirect to dashboard
+            if (session?.user) {
+                const path = window.location.pathname;
+                if (path === '/' || path === '/login' || path === '/signup') {
+                    window.location.href = '/dashboard';
+                }
+            }
         });
 
-        // Listen for changes on auth state (bi-directional communication)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        // Listen for changes on auth state
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
+
+            // Handle OAuth sign in - redirect to dashboard
+            if (event === 'SIGNED_IN' && session?.user) {
+                const path = window.location.pathname;
+                if (path === '/' || path === '/login' || path === '/signup') {
+                    window.location.href = '/dashboard';
+                }
+            }
+
+            // Handle sign out - redirect to home
+            if (event === 'SIGNED_OUT') {
+                window.location.href = '/';
+            }
         });
 
         return () => subscription.unsubscribe();
