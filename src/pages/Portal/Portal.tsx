@@ -5,6 +5,9 @@ import { LayoutContextType } from '../../components/Layout/MainLayout';
 import { useAuth } from '../../context/AuthContext';
 import { ResourceCard, StatusBadge, ResourceTable, ConfirmModal } from '../../components/Portal/ResourceCard';
 import LogViewer from '../../components/Portal/LogViewer';
+import CreatePodModal from '../../components/Portal/CreatePodModal';
+import CreateServiceModal from '../../components/Portal/CreateServiceModal';
+import ScaleDeploymentModal from '../../components/Portal/ScaleDeploymentModal';
 
 interface Pod {
     name: string;
@@ -59,6 +62,9 @@ const Portal = () => {
     const [isDeployModalOpen, setIsDeployModalOpen] = useState(false);
     const [deleteModal, setDeleteModal] = useState<{ type: string; name: string } | null>(null);
     const [selectedPodForLogs, setSelectedPodForLogs] = useState<string | null>(null);
+    const [isPodModalOpen, setIsPodModalOpen] = useState(false);
+    const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+    const [scaleModal, setScaleModal] = useState<{ name: string; replicas: number } | null>(null);
 
     // Data State
     const [summary, setSummary] = useState<Summary | null>(null);
@@ -291,8 +297,8 @@ const Portal = () => {
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as TabType)}
                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id
-                                ? 'bg-cyan-500 text-white shadow-lg'
-                                : 'text-gray-400 hover:text-white hover:bg-white/10'
+                            ? 'bg-cyan-500 text-white shadow-lg'
+                            : 'text-gray-400 hover:text-white hover:bg-white/10'
                             }`}
                     >
                         <span>{tab.icon}</span>
@@ -414,6 +420,7 @@ const Portal = () => {
                                 </td>
                                 <td className="p-4">
                                     <div className="flex gap-2">
+                                        <button onClick={() => setScaleModal({ name: d.name, replicas: d.replicas })} className="p-1.5 hover:bg-green-500/20 rounded text-green-400" title="Scale">📈</button>
                                         <button onClick={() => handleRestart(d.name)} className="p-1.5 hover:bg-blue-500/20 rounded text-blue-400" title="Restart">🔄</button>
                                         <button onClick={() => setDeleteModal({ type: 'deployment', name: d.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
                                     </div>
@@ -424,54 +431,68 @@ const Portal = () => {
                 )}
 
                 {activeTab === 'pods' && (
-                    <ResourceTable
-                        headers={['Name', 'Status', 'Restarts', 'IP', 'Node', 'Age', 'Actions']}
-                        isEmpty={pods.length === 0}
-                        loading={loading.pods}
-                        emptyMessage="No pods found in your namespace."
-                    >
-                        {pods.map(p => (
-                            <tr key={p.name} className="border-t border-white/5 hover:bg-white/5">
-                                <td className="p-4">
-                                    <div className="font-medium">{p.name}</div>
-                                    <div className="text-xs text-gray-500">{p.containers[0]?.image}</div>
-                                </td>
-                                <td className="p-4"><StatusBadge status={p.status} pulse /></td>
-                                <td className="p-4">{p.restarts}</td>
-                                <td className="p-4 font-mono text-xs">{p.ip}</td>
-                                <td className="p-4 text-gray-400 text-sm">{p.node}</td>
-                                <td className="p-4 text-gray-400 text-sm">{timeAgo(p.age)}</td>
-                                <td className="p-4">
-                                    <div className="flex gap-2">
-                                        <button onClick={() => { setSelectedPodForLogs(p.name); setActiveTab('logs'); }} className="p-1.5 hover:bg-cyan-500/20 rounded text-cyan-400" title="Logs">📜</button>
-                                        <button onClick={() => setDeleteModal({ type: 'pod', name: p.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </ResourceTable>
+                    <>
+                        <div className="mb-4 flex justify-end">
+                            <button onClick={() => setIsPodModalOpen(true)} className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-green-500/20 hover:-translate-y-0.5 transition-all flex items-center gap-2">
+                                <span>🐳</span> Create Pod
+                            </button>
+                        </div>
+                        <ResourceTable
+                            headers={['Name', 'Status', 'Restarts', 'IP', 'Node', 'Age', 'Actions']}
+                            isEmpty={pods.length === 0}
+                            loading={loading.pods}
+                            emptyMessage="No pods found in your namespace."
+                        >
+                            {pods.map(p => (
+                                <tr key={p.name} className="border-t border-white/5 hover:bg-white/5">
+                                    <td className="p-4">
+                                        <div className="font-medium">{p.name}</div>
+                                        <div className="text-xs text-gray-500">{p.containers[0]?.image}</div>
+                                    </td>
+                                    <td className="p-4"><StatusBadge status={p.status} pulse /></td>
+                                    <td className="p-4">{p.restarts}</td>
+                                    <td className="p-4 font-mono text-xs">{p.ip}</td>
+                                    <td className="p-4 text-gray-400 text-sm">{p.node}</td>
+                                    <td className="p-4 text-gray-400 text-sm">{timeAgo(p.age)}</td>
+                                    <td className="p-4">
+                                        <div className="flex gap-2">
+                                            <button onClick={() => { setSelectedPodForLogs(p.name); setActiveTab('logs'); }} className="p-1.5 hover:bg-cyan-500/20 rounded text-cyan-400" title="Logs">📜</button>
+                                            <button onClick={() => setDeleteModal({ type: 'pod', name: p.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </ResourceTable>
+                    </>
                 )}
 
                 {activeTab === 'services' && (
-                    <ResourceTable
-                        headers={['Name', 'Type', 'Cluster IP', 'Ports', 'Age', 'Actions']}
-                        isEmpty={services.length === 0}
-                        loading={loading.services}
-                        emptyMessage="No services found in your namespace."
-                    >
-                        {services.map(s => (
-                            <tr key={s.name} className="border-t border-white/5 hover:bg-white/5">
-                                <td className="p-4 font-medium">{s.name}</td>
-                                <td className="p-4"><span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs">{s.type}</span></td>
-                                <td className="p-4 font-mono text-xs">{s.clusterIP}</td>
-                                <td className="p-4 font-mono text-xs">{s.ports.map(p => `${p.port}:${p.targetPort}`).join(', ')}</td>
-                                <td className="p-4 text-gray-400 text-sm">{timeAgo(s.age)}</td>
-                                <td className="p-4">
-                                    <button onClick={() => setDeleteModal({ type: 'service', name: s.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </ResourceTable>
+                    <>
+                        <div className="mb-4 flex justify-end">
+                            <button onClick={() => setIsServiceModalOpen(true)} className="bg-gradient-to-r from-purple-500 to-pink-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-purple-500/20 hover:-translate-y-0.5 transition-all flex items-center gap-2">
+                                <span>🌐</span> Create Service
+                            </button>
+                        </div>
+                        <ResourceTable
+                            headers={['Name', 'Type', 'Cluster IP', 'Ports', 'Age', 'Actions']}
+                            isEmpty={services.length === 0}
+                            loading={loading.services}
+                            emptyMessage="No services found in your namespace."
+                        >
+                            {services.map(s => (
+                                <tr key={s.name} className="border-t border-white/5 hover:bg-white/5">
+                                    <td className="p-4 font-medium">{s.name}</td>
+                                    <td className="p-4"><span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs">{s.type}</span></td>
+                                    <td className="p-4 font-mono text-xs">{s.clusterIP}</td>
+                                    <td className="p-4 font-mono text-xs">{s.ports.map(p => `${p.port}:${p.targetPort}`).join(', ')}</td>
+                                    <td className="p-4 text-gray-400 text-sm">{timeAgo(s.age)}</td>
+                                    <td className="p-4">
+                                        <button onClick={() => setDeleteModal({ type: 'service', name: s.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </ResourceTable>
+                    </>
                 )}
 
                 {activeTab === 'logs' && (
@@ -507,6 +528,7 @@ const Portal = () => {
                     </div>
                 )}
             </div>
+
 
             {/* Deploy Modal */}
             {isDeployModalOpen && (
@@ -611,6 +633,69 @@ const Portal = () => {
                 confirmText="Delete"
                 confirmColor="red"
             />
+
+            {/* Create Pod Modal */}
+            <CreatePodModal
+                isOpen={isPodModalOpen}
+                onClose={() => setIsPodModalOpen(false)}
+                onSubmit={async (data) => {
+                    const res = await fetch('/api/pods', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify(data)
+                    });
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Failed to create pod');
+                    }
+                    fetchPods();
+                    fetchSummary();
+                }}
+            />
+
+            {/* Create Service Modal */}
+            <CreateServiceModal
+                isOpen={isServiceModalOpen}
+                onClose={() => setIsServiceModalOpen(false)}
+                onSubmit={async (data) => {
+                    const res = await fetch('/api/services', {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify(data)
+                    });
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Failed to create service');
+                    }
+                    fetchServices();
+                    fetchSummary();
+                }}
+                existingPods={[...pods.map(p => ({ name: p.name })), ...deployments.map(d => ({ name: d.name }))]}
+            />
+
+            {/* Scale Deployment Modal */}
+            {scaleModal && (
+                <ScaleDeploymentModal
+                    isOpen={!!scaleModal}
+                    onClose={() => setScaleModal(null)}
+                    deploymentName={scaleModal.name}
+                    currentReplicas={scaleModal.replicas}
+                    onSubmit={async (replicas) => {
+                        const res = await fetch(`/api/deployments/${namespace}/${scaleModal.name}/scale`, {
+                            method: 'POST',
+                            headers: getAuthHeaders(),
+                            body: JSON.stringify({ replicas })
+                        });
+                        if (!res.ok) {
+                            const err = await res.json();
+                            throw new Error(err.error || 'Failed to scale');
+                        }
+                        fetchDeployments();
+                        fetchPods();
+                        fetchSummary();
+                    }}
+                />
+            )}
 
             <style>{`
                 @keyframes fade-in {
