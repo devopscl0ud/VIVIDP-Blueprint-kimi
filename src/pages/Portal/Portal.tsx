@@ -474,23 +474,75 @@ const Portal = () => {
                             </button>
                         </div>
                         <ResourceTable
-                            headers={['Name', 'Type', 'Cluster IP', 'Ports', 'Age', 'Actions']}
+                            headers={['Name', 'Type', 'Cluster IP', 'Ports', 'Access', 'Age', 'Actions']}
                             isEmpty={services.length === 0}
                             loading={loading.services}
                             emptyMessage="No services found in your namespace."
                         >
-                            {services.map(s => (
-                                <tr key={s.name} className="border-t border-white/5 hover:bg-white/5">
-                                    <td className="p-4 font-medium">{s.name}</td>
-                                    <td className="p-4"><span className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs">{s.type}</span></td>
-                                    <td className="p-4 font-mono text-xs">{s.clusterIP}</td>
-                                    <td className="p-4 font-mono text-xs">{s.ports.map(p => `${p.port}:${p.targetPort}`).join(', ')}</td>
-                                    <td className="p-4 text-gray-400 text-sm">{timeAgo(s.age)}</td>
-                                    <td className="p-4">
-                                        <button onClick={() => setDeleteModal({ type: 'service', name: s.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {services.map(s => {
+                                // Node external IPs for NodePort access
+                                const nodeExternalIPs = ['136.113.65.16', '34.58.110.43'];
+                                const nodePort = s.ports.find(p => p.nodePort)?.nodePort;
+                                const isNodePort = s.type === 'NodePort' && nodePort;
+
+                                return (
+                                    <tr key={s.name} className="border-t border-white/5 hover:bg-white/5">
+                                        <td className="p-4 font-medium">{s.name}</td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-xs ${s.type === 'NodePort' ? 'bg-green-500/20 text-green-400' :
+                                                    s.type === 'LoadBalancer' ? 'bg-blue-500/20 text-blue-400' :
+                                                        'bg-purple-500/20 text-purple-400'
+                                                }`}>
+                                                {s.type}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 font-mono text-xs">{s.clusterIP}</td>
+                                        <td className="p-4 font-mono text-xs">
+                                            {s.ports.map(p => (
+                                                <div key={p.port}>
+                                                    {p.port}:{p.targetPort}
+                                                    {p.nodePort && <span className="text-green-400 ml-1">(:{p.nodePort})</span>}
+                                                </div>
+                                            ))}
+                                        </td>
+                                        <td className="p-4">
+                                            {isNodePort ? (
+                                                <div className="space-y-1">
+                                                    {nodeExternalIPs.map((ip, idx) => (
+                                                        <a
+                                                            key={ip}
+                                                            href={`http://${ip}:${nodePort}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 hover:underline group"
+                                                            title={`Open via worker${idx + 1}`}
+                                                        >
+                                                            <span className="text-gray-500 text-[10px]">w{idx + 1}:</span>
+                                                            {ip}:{nodePort}
+                                                            <span className="opacity-0 group-hover:opacity-100">🔗</span>
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            ) : s.type === 'LoadBalancer' && s.externalIP ? (
+                                                <a
+                                                    href={`http://${s.externalIP}:${s.ports[0]?.port}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-cyan-400 hover:underline"
+                                                >
+                                                    {s.externalIP}:{s.ports[0]?.port} 🔗
+                                                </a>
+                                            ) : (
+                                                <span className="text-xs text-gray-500">Internal only</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-gray-400 text-sm">{timeAgo(s.age)}</td>
+                                        <td className="p-4">
+                                            <button onClick={() => setDeleteModal({ type: 'service', name: s.name })} className="p-1.5 hover:bg-red-500/20 rounded text-red-400" title="Delete">🗑️</button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </ResourceTable>
                     </>
                 )}

@@ -15,12 +15,17 @@ const Sidebar = ({ open, onClose }: SidebarProps) => {
     const mainNavItems = [
         { path: '/dashboard', label: 'Dashboard', icon: '📊' },
         { path: '/portal', label: 'Portal', icon: '🚀' },
+        { path: '/nodes', label: 'Nodes', icon: '🖥️' },
         { path: '/analytics', label: 'Analytics', icon: '📈' },
         { path: '/activity', label: 'Activity', icon: '📋' },
         { path: '/security', label: 'Security', icon: '🔒' },
+        { path: '/team', label: 'Team', icon: '👥' },
+        { path: '/integrations', label: 'Integrations', icon: '🔗' },
     ];
 
     const bottomNavItems = [
+        { path: '/api-keys', label: 'API Keys', icon: '🔑' },
+        { path: '/cli', label: 'CLI Tool', icon: '⌨️' },
         { path: '/billing', label: 'Billing', icon: '💳' },
         { path: '/settings', label: 'Settings', icon: '⚙️' },
         { path: '/help', label: 'Help', icon: '❓' },

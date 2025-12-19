@@ -10,6 +10,11 @@ import Portal from './pages/Portal/Portal';
 import Billing from './pages/Billing/Billing';
 import Activity from './pages/Activity/Activity';
 import Help from './pages/Help/Help';
+import ApiKeys from './pages/ApiKeys/ApiKeys';
+import Team from './pages/Team/Team';
+import CLI from './pages/CLI/CLI';
+import Integrations from './pages/Integrations/Integrations';
+import Nodes from './pages/Nodes/Nodes';
 import MainLayout from './components/Layout/MainLayout';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -78,6 +83,11 @@ function App() {
                         <Route path="/billing" element={<Billing />} />
                         <Route path="/activity" element={<Activity />} />
                         <Route path="/help" element={<Help />} />
+                        <Route path="/api-keys" element={<ApiKeys />} />
+                        <Route path="/team" element={<Team />} />
+                        <Route path="/cli" element={<CLI />} />
+                        <Route path="/integrations" element={<Integrations />} />
+                        <Route path="/nodes" element={<Nodes />} />
                     </Route>
 
                     {/* Catch-all redirect */}
